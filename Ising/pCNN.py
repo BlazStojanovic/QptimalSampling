@@ -1,6 +1,7 @@
 """
 CNN that respects periodic boudary conditions, 
 and one in which all of the inputs are correlated with each other
+
 """
 
 from flax import linen as nn
@@ -53,26 +54,33 @@ class pCNN(nn.Module):
 	layers: int # TODO add check, because this has to be a certain fixed value
 	strides: Tuple[int, int] = (1,1)
 
-	def setup(self):
-		self.pb_hid = PeriodicBlock(conv=self.conv, 
-						   act=self.act, 
-						   channels=self.hid_channels,
-						   K=self.K,  
-						   strides=self.strides)  # First layer will always have a single channel 
-
-
-		self.pb_out = PeriodicBlock(conv=self.conv, 
-						   act=self.act, 
-						   channels=self.out_channels,
-						   K=self.K,  
-						   strides=self.strides)
-
 	@nn.compact
 	def __call__(self, x):
 		for i in range(0, self.layers):
-			x = self.pb_hid(x)
+			x = PeriodicBlock(conv=self.conv, 
+						   act=self.act, 
+						   channels=self.hid_channels,
+						   K=self.K,  
+						   strides=self.strides)(x)
 
-		return self.pb_out(x)
+		return PeriodicBlock(conv=self.conv, 
+						   act=self.act, 
+						   channels=self.out_channels,
+						   K=self.K,  
+						   strides=self.strides)(x)
+
+
+# TODO, this is just bad design. But should be enough for now. Fix this when you have time.
+def check_pCNN(lattice_size, K, layers):
+	""" Check if the pCNN correlates each pixel with each other """
+	if (lattice_size - 1) % (K - 1) == 0 and K % 2 != 0:
+            num_inner_layers = (lattice_size - 1) // (K - 1)
+        else:
+            raise ValueError("Kernel size K and lattice size should be odd"
+                             + "L-1 must be a multiple of K-1")
+
+    if layers < num_inner_layers:
+    	raise ValueError("The number of layers {} is to small, should be at least {}".format(layers, num_inner_layers))
 
 
 if __name__ == '__main__':
