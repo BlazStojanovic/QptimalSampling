@@ -4,7 +4,11 @@ Loss functions for learning optimal rate matrix of Lattice models
 """
 
 
-def endpoint_loss(X, S, model):
+def FKac_weight(V, taui):
+
+
+
+def ising_endpoint_loss(X, S, model):
 	"""
 	Loss for fixed trajectory endpoints
 
@@ -22,6 +26,10 @@ def endpoint_loss(X, S, model):
 	logRN = 0.0 # TODO think of vectorized case
 
 	# 1st term - Feynman-Kac weight on the trajectory
-	
 
+
+	pass
+
+
+def ising_endpoint_loss(X, S):
 	pass
