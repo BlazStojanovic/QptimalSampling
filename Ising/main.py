@@ -1,6 +1,5 @@
 """
-Main file for running the Ising model example.
-
+Main file for running the Ising model example. 
 """
 
 from absl import app 

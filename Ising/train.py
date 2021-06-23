@@ -1,6 +1,5 @@
 """
 Utilities for training the Ising model
-
 """
 
 import sys
