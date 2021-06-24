@@ -83,3 +83,5 @@ def step_gumbel(key, G):
 	s = rnd.categorical(key, jnp.log(jnp.ravel(G, order='C')/lamb)) # categorical takes logits as input
 
 	return tau, s, subkey
+
+

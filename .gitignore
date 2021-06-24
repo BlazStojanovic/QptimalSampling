@@ -1,0 +1,10 @@
+# ignore any data folders
+\data
+
+# ignore sublime text workspace
+*.sublime-workspace
+
+# cache folders
+\__pycache__
+
+
