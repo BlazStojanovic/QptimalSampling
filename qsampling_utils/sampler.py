@@ -7,7 +7,10 @@ import jax
 import jax.random as rnd
 import jax.numpy as jnp
 
-def step_max(key, lamb, p):
+from jax import jit
+
+@jit
+def step_max(key, G):
 	"""
 	Make single step with the 
 	hold time jump chain definition of a CTMC
@@ -15,8 +18,7 @@ def step_max(key, lamb, p):
 	Params:
 	-------
 	key -- PRNGKey
-	lamb -- the holding time exponential of current state
-	P -- jump chain transition matrix
+	G -- rate matrix
 
 	Returns:
 	--------
@@ -28,14 +30,15 @@ def step_max(key, lamb, p):
 
 	# sample times from exponential distribution ~Exp(1) and rescale according to rates
 	times = jnp.multiply(rnd.exponential(key, shape=jnp.shape(G)), jnp.reciprocal(G))
+	key, subkey = rnd.split(key)
 
 	# holding time is the minimum time of all the samples, the next state is this times corresponding state
-	tau = jnp.min(ravel(times, order='C'))
-	s = jnp.argmin(ravel(times, order='C'))
+	tau = jnp.min(jnp.ravel(times, order='C'))
+	s = jnp.argmin(jnp.ravel(times, order='C'))
 
 	return tau, s, subkey
 
-
+@jit
 def step_gumbel(key, G):
 	"""
 	Make single step with the 
@@ -85,3 +88,85 @@ def step_gumbel(key, G):
 	return tau, s, subkey
 
 
+if __name__ == '__main__':
+	# Just some quick testing, TODO do not forget to delete later
+
+	# test rate matrix
+	G = jnp.array([[1.2, 0.2, 0.7],
+				   [3.0, 0.4, 0.1],
+				   [1.1, 2.3, 0.9],
+				   [0.7, 1.8, 0.3]])
+
+	N = 1000000 # iterations
+
+	print("Testing gumbel approach for N = {}".format(N))
+
+	key = rnd.PRNGKey(42069)
+	counts_gumbel = jnp.array([0.0, 0.0, 0.0, 0.0])
+	sum_times_gumbel = jnp.array([0.0, 0.0, 0.0, 0.0])
+
+	state = 2 # initialise starting state
+
+	@jit
+	def bodyf(i, S):
+		# decompose S into components
+		state, G, key, counts_gumbel, sum_times_gumbel = S
+
+
+		lamb = jnp.arange
+		tau, s, key = step_gumbel(key, G[state, :])
+		
+
+		s = jax.lax.cond(s+1>=state, lambda x: x+1, lambda x: x, operand=s)
+
+		counts_gumbel = jax.ops.index_add(counts_gumbel, jax.ops.index[state], 1)
+		sum_times_gumbel = jax.ops.index_add(sum_times_gumbel, jax.ops.index[state], tau)
+
+		state = s
+		return state, G, key, counts_gumbel, sum_times_gumbel
+
+
+	S = state, G, key, counts_gumbel, sum_times_gumbel
+	S = jax.lax.fori_loop(0, N, bodyf, S)
+	state, G, key, counts_gumbel, sum_times_gumbel = S	
+
+	print("Frequency of each state: ", counts_gumbel)
+	print("Time spent in each state: ", sum_times_gumbel)
+
+
+	print("===============================================================================")
+	print("Testing max approach for N = {}".format(N))
+
+	key = rnd.PRNGKey(42069)
+	counts_gumbelm = jnp.array([0.0, 0.0, 0.0, 0.0])
+	sum_times_gumbelm = jnp.array([0.0, 0.0, 0.0, 0.0])
+
+	@jit
+	def bodyf(i, S):
+		# decompose S into components
+		state, G, key, counts_gumbel, sum_times_gumbel = S
+
+
+		lamb = jnp.arange
+		tau, s, key = step_max(key, G[state, :])
+		
+
+		s = jax.lax.cond(s+1>=state, lambda x: x+1, lambda x: x, operand=s)
+
+		counts_gumbel = jax.ops.index_add(counts_gumbel, jax.ops.index[state], 1)
+		sum_times_gumbel = jax.ops.index_add(sum_times_gumbel, jax.ops.index[state], tau)
+
+		state = s
+		return state, G, key, counts_gumbel, sum_times_gumbel
+
+
+	S = state, G, key, counts_gumbelm, sum_times_gumbelm
+	S = jax.lax.fori_loop(0, N, bodyf, S)
+	state, G, key, counts_gumbelm, sum_times_gumbelm = S	
+
+	print("Frequency of each state: ", counts_gumbelm)
+	print("Time spent in each state: ", sum_times_gumbelm)
+
+	print("===============================================================================")
+	print("Frequency ratio: ", counts_gumbel*jnp.reciprocal(counts_gumbelm))
+	print("Time ratio: ", sum_times_gumbel*jnp.reciprocal(sum_times_gumbelm))

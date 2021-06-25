@@ -53,26 +53,40 @@ class pCNN(nn.Module):
 	layers: int # TODO add check, because this has to be a certain fixed value
 	strides: Tuple[int, int] = (1,1)
 
-	def setup(self):
-		self.pb_hid = PeriodicBlock(conv=self.conv, 
-						   act=self.act, 
-						   channels=self.hid_channels,
-						   K=self.K,  
-						   strides=self.strides)  # First layer will always have a single channel 
-
-
-		self.pb_out = PeriodicBlock(conv=self.conv, 
-						   act=self.act, 
-						   channels=self.out_channels,
-						   K=self.K,  
-						   strides=self.strides)
-
 	@nn.compact
 	def __call__(self, x):
 		for i in range(0, self.layers):
-			x = self.pb_hid(x)
+			x = PeriodicBlock(conv=self.conv, 
+						   act=self.act, 
+						   channels=self.hid_channels,
+						   K=self.K,  
+						   strides=self.strides)(x)
 
-		return self.pb_out(x)
+		return PeriodicBlock(conv=self.conv, 
+						   act=self.act, 
+						   channels=self.out_channels,
+						   K=self.K,  
+						   strides=self.strides)(x)
+
+
+def check_pcnn_validity(lattice_size, K, layers):
+	"""
+	Checks if the hyperparameters of the pCNN are such that 
+	each input pixel is correlated with every other input pixel
+	"""
+
+	# we assume that the kernel is square for now
+	assert K[0] == K[1], "The kernel must be square!"
+
+	if (lattice_size - 1) % (K[0] - 1) == 0 and K[0] % 2 != 0:
+		min_num_layers = (lattice_size - 1) // (K[0] - 1)
+	else:
+		raise ValueError("Lattice size and kernel size must be odd"
+			+ "L-1 must be multiple of K-1, error because L = {} and K = {}".format(lattice_size, K))
+
+	# check depth
+	if layers < min_num_layers:
+		raise ValueError("Minimum number of layers should be atleast {}, but is {}.".format(min_num_layers, layers))
 
 
 if __name__ == '__main__':
@@ -82,7 +96,7 @@ if __name__ == '__main__':
 
 	K = (3, 3) # must be odd for this to work
 	out_channels = 1
-	hid_channels = 3
+	hid_channels = 2
 
 	key = random.PRNGKey(123456789)
 	pcnn = pCNN(conv=CircularConv, 
