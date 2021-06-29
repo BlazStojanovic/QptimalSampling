@@ -63,7 +63,7 @@ class pCNN(nn.Module):
 						   strides=self.strides)(x)
 
 		return PeriodicBlock(conv=self.conv, 
-						   act=self.act, 
+						   act=nn.softplus, # TODO hardcoded 
 						   channels=self.out_channels,
 						   K=self.K,  
 						   strides=self.strides)(x)
@@ -109,9 +109,12 @@ if __name__ == '__main__':
 	
 	variables = pcnn.init({'params':key}, jnp.zeros((1,7,7,1)))
 
-	pprint(variables['params'])
+	# pprint(variables['params'])
 	# params = CircularConv(channels, K, strides=(1,1)).init(key, jnp.zeros((1,7,7,1)))
 
-	x = random.normal(key, (1,7,7,1))
+	# x = random.normal(key, (1,7,7,1))
+	x = random.choice(key, 2, shape=(1, 7, 7, 1))*(-2)+1
+	print(x)
 	out = pcnn.apply({'params': variables['params']}, x)
 	pprint(jnp.shape(out))
+	pprint(out)

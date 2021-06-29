@@ -97,7 +97,7 @@ if __name__ == '__main__':
 				   [1.1, 2.3, 0.9],
 				   [0.7, 1.8, 0.3]])
 
-	N = 1000000 # iterations
+	N = 100000 # iterations
 
 	print("Testing gumbel approach for N = {}".format(N))
 
@@ -112,11 +112,8 @@ if __name__ == '__main__':
 		# decompose S into components
 		state, G, key, counts_gumbel, sum_times_gumbel = S
 
-
-		lamb = jnp.arange
 		tau, s, key = step_gumbel(key, G[state, :])
 		
-
 		s = jax.lax.cond(s+1>=state, lambda x: x+1, lambda x: x, operand=s)
 
 		counts_gumbel = jax.ops.index_add(counts_gumbel, jax.ops.index[state], 1)
@@ -146,10 +143,7 @@ if __name__ == '__main__':
 		# decompose S into components
 		state, G, key, counts_gumbel, sum_times_gumbel = S
 
-
-		lamb = jnp.arange
 		tau, s, key = step_max(key, G[state, :])
-		
 
 		s = jax.lax.cond(s+1>=state, lambda x: x+1, lambda x: x, operand=s)
 

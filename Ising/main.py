@@ -41,7 +41,6 @@ def main(argv):
 	# TODO serialise the model and store for further use
 	print("TODO: you need to serialize the model and store it for further samling")
 
-
 if __name__ == '__main__':
 	flags.mark_flags_as_required(['config', 'workdir'])
 	app.run(main)
