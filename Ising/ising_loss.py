@@ -4,8 +4,9 @@ Calculating endpoint loss for the 2D Ising model. Along with helper functions
 
 import jax.numpy as jnp
 from jax import jit, vmap
+import jax
 
-@jit
+# @jit
 def ising_potential_single(S, J, g):
 	"""
 	Ising potential
@@ -26,7 +27,8 @@ def ising_potential_single(S, J, g):
 	potential = -J*jnp.sum(potential, axis=(-1, -2, -3))
 
 	#second term
-	potential -= g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2, -3, -4))
+	potential -= g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2, -3))
+	# print(g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2, -3)))
 
 	return potential
 
@@ -53,13 +55,17 @@ def passive_difference_single(S, J, g, model, params):
 	--------
 	rate_difference
 	"""
+	# print(jnp.shape(S))
 
 	rates = jnp.sum(model.apply({'params': params['params']}, S), axis=(-1, -2, -3))
-	passive_rates = g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2, -3, -4))
+	passive_rates = g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2, -3))
+	
+	# print(jnp.shape(rates))
+	# print(passive_rates[0, :, :, 0])
 
 	return passive_rates - rates
 
-passive_difference = vmap(passive_difference_single, in_axes=(0, None, None, None, None), out_axes=(0))
+# passive_difference = vmap(passive_difference_single, in_axes=(0, None, None, None, None), out_axes=(0))
 
 # def rate_transition_single(S, f, J, g, lattice_size, model, params):
 # 	"""
@@ -93,21 +99,16 @@ passive_difference = vmap(passive_difference_single, in_axes=(0, None, None, Non
 # rate_transition = vmap(rate_transition_single, in_axes=(0, None, None, None, None, None, None), out_axes=(0)) 
 # rate_transition = vmap(rate_transition, in_axes=(None, 0, None, None, None, None, None), out_axes=(0)) 
 
-
-def rate_transition(trajectories, Fs, J, g, l, model, params):
+def rate_transition(Ss, fs, J, g, l, model, params):
 	
-	Nb, Nt = jnp.shape(trajectories)[0], jnp.shape(trajectories)[1]
-	# print(Nb, Nt)
+	Nb = jnp.shape(Ss)[0]
 
-	loss_ = jnp.zeros((jnp.shape(trajectories)[0]))
+	loss_ = jnp.zeros(jnp.shape(fs))
 
 	# transitions between all states
-	for i in range(jnp.shape(trajectories)[1]):
-		rates = model.apply({'params': params['params']}, trajectories[:, i, :, :, :]) # (Nb, l, l, 1)
-		transition_rates = rates[jnp.arange(Nb), Fs[:, i-1, 0] // l, Fs[:, i-1, 0] % l, :]
-		# print(transition_rates)
-
-		loss_ += jnp.log(transition_rates/g)
+	rates = model.apply({'params': params['params']}, Ss)
+	transition_rates = rates[jnp.arange(Nb), fs // l, fs % l, :]
+	loss_ = jnp.log(transition_rates/g)
 
 	return loss_
 
@@ -118,7 +119,7 @@ def ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size)
 
 	Params:
 	-------
-	trajectories -- Batch of trajectories with shape (Nt, Nb, l, l, 1) where 
+	trajectories -- Batch of trajectories with shape (Nb, Nt, l, l, 1) where 
 	Ts is the no. of time steps, Nb is the batch size and l is the lattice size
 	times -- Batch of holding times with shape (Nb, Nt, 1)
 	Fs -- Batch of spin flips with shape (Nb, Nt, 1)
@@ -132,18 +133,49 @@ def ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size)
 	# print(ising_potential(trajectories, J, g))
 	# print(Ts[:, :, 0])
 
-	logRN = jnp.sum(jnp.multiply(ising_potential(trajectories, J, g), Ts[:, :, 0]), axis=1)
+	# non optimal for loop for now
+	t = jnp.shape(Ts)[1]
 
-	# 2nd term - difference between rows of rate matrices at each step 
-	# TODO rejoin second and third term into a single calculation for efficiency
-	logRN += jnp.sum(jnp.multiply(passive_difference(trajectories, J, g, model, params) , Ts[:, :, 0]), axis=1) 
+	logRN = 0.0
+	# print(Fs[:, :, 0])
+	# print(Ts[:, :, 0])
 
-	# 3rd term - difference 
-	# print(jnp.shape(trajectories))
-	# print(jnp.shape(Fs))
-	# print(jnp.shape(rate_transition(trajectories, Fs, J, g, lattice_size, model, params)))
-	# logRN += jnp.sum(rate_transition(trajectories, Fs, J, g, lattice_size, model, params), axis=1)
-	logRN += jnp.sum(rate_transition(trajectories, Fs, J, g, lattice_size, model, params), axis=1)
+	Eest = 0.0
+
+	for i in range(t): # measures time
+		# print(Ts[:, :, 0])
+		# print(Ts[:, i, :])
+		# print(jnp.shape(Fs))
+		# print(jnp.shape(trajectories))
+		
+		# print(ising_potential(trajectories[:, i, :, :, :], J, g))
+
+		# print(Ts[:, i, 0])
+		# print(trajectories[0, i, :, :, 0])
+
+		# potential
+		V = jnp.multiply(ising_potential(trajectories[:, i, :, :, :], J, g), Ts[:, i, 0])
+		V = jax.lax.stop_gradient(V)
+		# # logRN = jnp.sum(jnp.multiply(ising_potential(trajectories, J, g), Ts[:, :, 0]), axis=1)
+
+		# # 2nd term - difference between rows of rate matrices at each step 
+		# # TODO rejoin second and third term into a single calculation for efficiency
+		# print(jnp.multiply(passive_difference_single(trajectories[:, i, :, :, :], J, g, model, params) , Ts[:, i, 0]) )
+		T = jnp.multiply(passive_difference_single(trajectories[:, i, :, :, :], J, g, model, params) , Ts[:, i, 0])  
+
+		# print(jnp.average(V))
+
+		# V = 0
+		logRN += V + T
+		# # 3rd term - difference
+		# # print(jnp.shape(trajectories))
+		# # print(jnp.shape(Fs))
+		# # print(jnp.shape(rate_transition(trajectories, Fs, J, g, lattice_size, model, params)))
+		logRN += rate_transition(trajectories[:, i, :, :], Fs[:, i, 0], J, g, lattice_size, model, params).T
 
 
-	return jnp.mean(logRN)
+	sig = jnp.var(logRN/jnp.sum(Ts[0, :, 0]))
+	Eest = jnp.average(logRN/jnp.sum(Ts[0, :, 0]))
+	print("E = {} +- {}".format(jax.lax.stop_gradient(Eest), jax.lax.stop_gradient(sig)))
+
+	return jnp.var(logRN)

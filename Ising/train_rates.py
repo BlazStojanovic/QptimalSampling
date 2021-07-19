@@ -6,11 +6,10 @@ import sys
 sys.path.append('../')
 
 # from qsampling_utils.loss import ising_endpoint_loss, ising_potential
-from qsampling_utils.sampler import step_max, step_gumbel
+from qsampling_utils.sampl_utils import step_max, step_gumbel
 from qsampling_utils.pCNN import pCNN, CircularConv, check_pcnn_validity
 from ising_loss import ising_endpoint_loss, ising_potential
 
-from absl import logging
 import ml_collections
 
 import matplotlib.pyplot as plt
@@ -198,9 +197,8 @@ def flip_to_trajectory(S0, Nt, Nb, Fs, lattice_size):
 
 		trajectories = trajectories.at[:, i, :, :, :].set(jnp.multiply(trajectories[:, i-1, :, :, :], F))
 
-		# return trajectories, Fs, l		
+		# return trajectories, Fs, l
 	
-
 	# loop_state = trajectories, Fs, lattice_size
 	# trajectories, Fs, lattice_size = jax.lax.fori_loop(0, Nt, loop_fun, loop_state)
 
@@ -275,29 +273,20 @@ def train_epoch(config, key, state, epoch, model, params):
 	# get the trajectories
 	trajectories =  flip_to_trajectory(S0, config.trajectory_length, config.batch_size, Fs, config.lattice_size)
 
-	# metrics
-	batch_metrics = []
-
 	# make training step and store metrics
 	def loss_fn(params):
 		return ising_endpoint_loss(trajectories, Ts, Fs, model, params, config.J, config.g, config.lattice_size)
 
 	grad_fn = jax.value_and_grad(loss_fn)
 	vals, grads = grad_fn(state.params)
-	# print(grads)
 	state = state.apply_gradients(grads=grads)
 
-	# compute mean of metrics across each batch in epoch.
-	# batch_metrics_np = jax.device_get(batch_metrics)
-	# epoch_metrics_np = {k: np.mean([metrics[k] for metrics in batch_metrics_np]) for k in batch_metrics_np[0]}
-	# print('train epoch: %d, loss: %.4f, accuracy: %.4f' % (epoch, epoch_metrics_np['loss'], epoch_metrics_np['energy'] * 100))
-	
 	print('train_epoch: %d, loss: %.4f' % (epoch, vals))
 
-	return state
+	return state, vals
 
 
-def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
+def train(config: ml_collections.ConfigDict, workdir: str):
 	"""
 	Train basic 2D ising model case with endpoint loss 
 	
@@ -314,9 +303,9 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
 	
 	key = rnd.PRNGKey(0)
 
-	# init tensorboard
-	summary_writer = tensorboard.SummaryWriter(workdir)
-	summary_writer.hparams(dict(config))
+	# # init tensorboard
+	# summary_writer = tensorboard.SummaryWriter(workdir)
+	# summary_writer.hparams(dict(config))
 
 	# variational approximation of the rates
 	params, pcnn = get_parameterisation(key, 
@@ -334,6 +323,9 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
 	# construct the train state
 	state = train_state.TrainState.create(apply_fn=pcnn.apply, params=params, tx=tx)
 
+	# losses
+	ll = np.zeros((config.num_epochs,))
+
 	# train rates
 	for epoch in range(1, config.num_epochs+1):
 
@@ -341,20 +333,16 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
 		key, subkey = rnd.split(key)
 
 		# optimisation step on one batch
-		state = train_epoch(config, key, state, epoch, pcnn, params)
-
-
+		state, vals = train_epoch(config, key, state, epoch, pcnn, params)
+		ll[epoch-1] = vals
 
 	# return the trained rates
-	return None
-
-
+	return state, ll
 
 def estimate_energy(key, config, pcnn, params):
 	"""
 	Estimate energy from samples using the current sample rates. 
 	"""
-
 	E = 0 
 	sigma = 0
 

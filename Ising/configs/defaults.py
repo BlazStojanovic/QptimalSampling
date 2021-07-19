@@ -12,23 +12,21 @@ def get_config():
 	config.b2 = 0.999
 
 	config.batch_size = 128
-	config.num_epochs = 15
+	config.num_epochs = 30
 
 	# architecture params
+	config.loss_type = 'endpointloss'
+	config.architecture = 'pCNN'
 	config.out_channels = 1
-	config.hid_channels = 2
+	config.hid_channels = 3
 	config.kernel_size = (3,3)
-	config.layers = 4
+	config.layers = 3
 
 	# physics model parameters
-	config.lattice_size = 5
+	config.lattice_size = 6
 	config.T = 10
-	config.trajectory_length = 32 # this is for the alternative sampling approach
+	config.trajectory_length = 200 # this is for the alternative sampling approach
 	config.J = 0.32758
 	config.g = 1.0
-
-	# evaluation step params
-	config.energy_samples = 500
-	config.skip_percentage = 0.2
 
 	return config
