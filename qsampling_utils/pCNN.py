@@ -78,10 +78,10 @@ def check_pcnn_validity(lattice_size, K, layers):
 	# we assume that the kernel is square for now
 	assert K[0] == K[1], "The kernel must be square!"
 
-	if (lattice_size - 1) % (K[0] - 1) == 0 and K[0] % 2 != 0:
+	if K[0] % 2 != 0:
 		min_num_layers = (lattice_size - 1) // (K[0] - 1)
 	else:
-		raise ValueError("Lattice size and kernel size must be odd"
+		raise ValueError("Kernel size must be odd"
 			+ "L-1 must be multiple of K-1, error because L = {} and K = {}".format(lattice_size, K))
 
 	# check depth

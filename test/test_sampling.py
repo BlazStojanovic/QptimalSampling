@@ -25,6 +25,5 @@ class SampleTest(unittest.TestCase):
 		"""Test that gumbel leads into correct stationary distribution"""
 		self.assertEqual(1, 1)
 
-
 if __name__ == '__main__':
 	unittest.main()
