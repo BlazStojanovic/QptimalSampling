@@ -68,7 +68,6 @@ class pCNN(nn.Module):
 						   K=self.K,  
 						   strides=self.strides)(x)
 
-
 def check_pcnn_validity(lattice_size, K, layers):
 	"""
 	Checks if the hyperparameters of the pCNN are such that 

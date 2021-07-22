@@ -2,17 +2,16 @@
 Training the Ising model
 """
 
+import ml_collections
+import time
 import sys
 sys.path.append('../')
 
-# from qsampling_utils.loss import ising_endpoint_loss, ising_potential
 from qsampling_utils.sampl_utils import step_max, step_gumbel
 from qsampling_utils.pCNN import pCNN, CircularConv, check_pcnn_validity
 from ising_loss import ising_endpoint_loss, ising_potential
 
-import ml_collections
-
-import matplotlib.pyplot as plt
+import optax
 
 from flax import linen as nn
 from flax.metrics import tensorboard
@@ -23,9 +22,8 @@ import jax.numpy as jnp
 import jax.random as rnd
 from jax import jit
 
+import matplotlib.pyplot as plt
 import numpy as np
-
-import optax
 
 def get_parameterisation(key, lattice_size, hid_channels, out_channels, kernel, layers):
 	"""
@@ -81,7 +79,7 @@ def visualise_trajectory(times, Ss, flips):
 				ax[i, j].set_title("t = {:.3f}, flip = {}".format(times[i*m + j, 1], flips[i*m + j, 1]))
 				ax[i, j].imshow(Ss[i*m + j, :, :, 0])
 			ax[i, j].axis('off') 
-	plt.show()	
+	plt.show()
 
 def initialise_lattice(key, lattice_size):
 	"""
@@ -90,7 +88,54 @@ def initialise_lattice(key, lattice_size):
 	# return jax.lax.stop_gradient((rnd.choice(key, 2, shape=(1, lattice_size, lattice_size, 1))*(-2)+1))
 	return ((rnd.choice(key, 2, shape=(1, lattice_size, lattice_size, 1))*(-2)+1))
 
-def get_trajectory(key, pcnn, params, S0, T,  Ns, lattice_size):
+def get_trajectory(key, pcnn, params, S0, config):
+	"""
+	Obtain a single trajectory of the Ising model CTMC 
+	parameterised by the current rates
+	
+	Params:
+	-------
+	
+	Returns:
+	--------
+	
+	"""
+
+	T,  Ns, l = config.T, config.trajectory_length, config.lattice_size
+
+	times = jnp.zeros((Ns, 1))
+	flips = jnp.zeros((Ns, 1), dtype=jnp.int32)
+
+	# initial rates
+	rates = pcnn.apply({'params': params['params']}, S0)
+
+	def loop_fun(i, loop_state):
+		S0, times, flips, rates, key = loop_state # TODO, think about removing S0 from the loop_state
+		tau, s, key = step_max(key, rates[0, :, :	, 0])
+
+		# change current state
+		S0 = S0.at[0, s // l, s % l, 0].multiply(-1) # TODO, recheck this may be a source of a hard to spot bug
+		# store all of the values
+		times = times.at[i, 0].set(tau)
+		flips = flips.at[i, 0].set(s)
+
+		# get rates
+		rates = pcnn.apply({'params': params['params']}, S0)
+
+		return S0, times, flips, rates, key
+
+	# loop 
+	loop_state = S0, times, flips, rates, key
+	S0, times, flips, rates, key = jax.lax.fori_loop(0, Ns-1, loop_fun, loop_state)
+
+	# waiting time in the last state, the flip can be discarded
+	tau, s, key = step_max(key, rates[0, :, :, 0])
+	times = times.at[-1, 0].set(tau)
+	flips = flips.at[-1, 0].set(s)
+	
+	return times, flips
+
+def get_trajectory1(key, pcnn, params, S0, config):
 	"""
 	Obtain a single trajectory of the Ising model CTMC 
 	parameterised by the current rates
@@ -106,58 +151,56 @@ def get_trajectory(key, pcnn, params, S0, T,  Ns, lattice_size):
 	times -- Array of times that were spent in each state
 	Ss -- States 
 	flips -- Stores actions at each step, I.e. which spin was flipped
-
 	"""
-	
 
-	# TODO, this is a provisional implementation. It will cause issues later! 
-	# Performance issues due to wierd memory allocation and uncerntainty of the length of the trajectory
-	# Consider another implementation, which is of fixed length of the trajectory! 
-	# Tleft = T
-	# while Tleft > 0.0: 
-	# 	pass	 
-	# 
+	T, Ns, l = config.T, config.trajectory_length, config.lattice_size
+	Nmax = config.max_trajectory_length
 
-	# CAREFUL: this might be a potential source of errors, a fixed trajectory length implementation 
-	# might somehow mess up with the loss calculations from batch to batch, for example the CNN can be optimised 
-	# for smaller and smaller exponentials in order to generate longer (in time) trajectories which decreases the
-	# loss, since it contains the # - E_0 * T term. CHECK IF THIS IS THE CASE!
-
-	Ss = jnp.zeros((Ns, 1, lattice_size, lattice_size, 1))
-	l = lattice_size
-
-	times = jnp.zeros((Ns, 1))
-	flips = jnp.zeros((Ns, 1), dtype=jnp.int32)
+	times = jnp.zeros((Nmax, 1))
+	flips = jnp.zeros((Nmax, 1), dtype=jnp.int32)
 
 	# initial rates
 	rates = pcnn.apply({'params': params['params']}, S0)
 
-	def loop_fun(i, loop_state):
-		S0, times, flips, Ss, rates, key = loop_state # TODO, think about removing S0 from the loop_state
-		tau, s, key = step_max(key, rates[0, :, :, 0])
+	def loop_fun(loop_state):
+		S0, times, flips, rates, key, it, time, Tmax = loop_state # TODO, think about removing S0 from the loop_state
+		tau, s, key = step_max(key, rates[0, :, :	, 0])
 
 		# change current state
 		S0 = S0.at[0, s // l, s % l, 0].multiply(-1) # TODO, recheck this may be a source of a hard to spot bug
-		# store all of the values
-		times = times.at[i, 0].set(tau)
-		flips = flips.at[i, 0].set(s)
-		Ss = Ss.at[i+1, :, :, :, :].set(S0)
+		times = times.at[it, 0].set(tau)
+		flips = flips.at[it, 0].set(s)
 
 		# get rates
 		rates = pcnn.apply({'params': params['params']}, S0)
+		it += 1
+		time += tau
 
-		return S0, times, flips, Ss, rates, key
+		return S0, times, flips, rates, key, it, time, Tmax
+
+	def cond_fun(loop_state):
+		S0, times, flips, rates, key, it, time, Tmax = loop_state
+		return time < Tmax
 
 	# loop 
-	loop_state = S0, times, flips, Ss, rates, key
-	S0, times, flips, Ss, rates, key = jax.lax.fori_loop(0, Ns-1, loop_fun, loop_state)
+	it = 0
+	time = 0
+	loop_state = S0, times, flips, rates, key, it, time, T
+	S0, times, flips, rates, key, it, time, T = jax.lax.while_loop(cond_fun, loop_fun, loop_state)
 
-	# waiting time in the last state, the flip can be discarded
-	tau, s, key = step_max(key, rates[0, :, :, 0])
-	times = times.at[-1, 0].set(tau)
-	flips = flips.at[-1, 0].set(s)
+	# print(time)
+	# print(it)
+	# fix the last time
+	times = times.at[it-1, 0].add((T-time))
+	# print(jnp.sum(times))
+
+	# # waiting time in the last state, the flip can be discarded
+	# tau, s, key = step_max(key, rates[0, :, :, 0])
+	# times = times.at[-1, 0].set(tau)
+	# flips = flips.at[-1, 0].set(s)
 	
-	return times, flips
+	return times[:it, :], flips[:it, :] # just up to last iteration
+
 
 # @jit
 def flip_to_trajectory(S0, Nt, Nb, Fs, lattice_size):
@@ -260,18 +303,19 @@ def train_epoch(config, key, state, epoch, model, params):
 	epoch -- index of epoch
 
 	"""
+	start_time = time.time()
 
 	# randomly generate an initial state S0
 	S0 = initialise_lattice(key, config.lattice_size)
 
 	# obtain trajectory
-	times, flips = get_trajectory(key, model, params, S0, config.T,  config.trajectory_length, config.lattice_size)
+	times, flips = get_trajectory1(key, model, params, S0, config)
 
 	# permute the trajectory so you get a batch of trajectories with same endpoints
 	Ts, Fs = get_batch(key, config.batch_size, times, flips)
 
 	# get the trajectories
-	trajectories =  flip_to_trajectory(S0, config.trajectory_length, config.batch_size, Fs, config.lattice_size)
+	trajectories =  flip_to_trajectory(S0, jnp.shape(Ts)[1], config.batch_size, Fs, config.lattice_size)
 
 	# make training step and store metrics
 	def loss_fn(params):
@@ -281,7 +325,8 @@ def train_epoch(config, key, state, epoch, model, params):
 	vals, grads = grad_fn(state.params)
 	state = state.apply_gradients(grads=grads)
 
-	print('train_epoch: %d, loss: %.4f' % (epoch, vals))
+	epoch_time = time.time() - start_time
+	print('train_epoch: {} in {:0.2f} sec, loss: {:.4f}'.format(epoch, epoch_time, vals))	
 
 	return state, vals
 
@@ -300,12 +345,7 @@ def train(config: ml_collections.ConfigDict, workdir: str):
 	the trained optimizer, which will contain the found optimised parameterisation of the rates
 	
 	"""
-	
 	key = rnd.PRNGKey(0)
-
-	# # init tensorboard
-	# summary_writer = tensorboard.SummaryWriter(workdir)
-	# summary_writer.hparams(dict(config))
 
 	# variational approximation of the rates
 	params, pcnn = get_parameterisation(key, 
@@ -326,41 +366,18 @@ def train(config: ml_collections.ConfigDict, workdir: str):
 	# losses
 	ll = np.zeros((config.num_epochs,))
 
+	print("Solving for L = {}, J = {}, g = {}".format(config.lattice_size, config.J, config.g))
+	print("T = {}, batch = {}".format(config.T, config.batch_size))
+	print("-----------------------------------------------------------------------------------")
+
 	# train rates
 	for epoch in range(1, config.num_epochs+1):
-
 		# split subkeys for shuffling purpuse
 		key, subkey = rnd.split(key)
-
+		
 		# optimisation step on one batch
 		state, vals = train_epoch(config, key, state, epoch, pcnn, params)
 		ll[epoch-1] = vals
-
+		
 	# return the trained rates
 	return state, ll
-
-def estimate_energy(key, config, pcnn, params):
-	"""
-	Estimate energy from samples using the current sample rates. 
-	"""
-	E = 0 
-	sigma = 0
-
-	S0 = initialise_lattice(key, config.lattice_size)
-
-	for i in range(int(config.energy_samples*config.skip_percentage)):
-		rates = pcnn.apply({'params': params['params']}, S0)
-		tau, s, key = step_gumbel(key, rates[0, :, :, 0]) # TODO, recheck this it may not be the same as sampling with Hastings
-		# change current state
-
-		S0 = S0.at[0, s // l, s % l, 0].multiply(-1) # TODO, recheck this may be a source of a hard to spot bug
-
-	for i in range(int(config.energy_samples*config.skip_percentage)):
-		rates = pcnn.apply({'params': params['params']}, S0)
-		tau, s, key = step_gumbel(key, rates[0, :, :, 0])
-		# change current state
-
-		S0 = S0.at[0, s // l, s % l, 0].multiply(-1)
-		E = Ising_energy()
-
-

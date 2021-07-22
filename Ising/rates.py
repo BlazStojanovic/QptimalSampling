@@ -1,7 +1,5 @@
 """
 Main file for running the Ising model example. 
-
-Adapted from Flax Examples at ~ https://github.com/google/flax/blob/65061e6128f6695eed441acf2bfffc3b1badd318/examples/mnist/main.py
 """
 
 import train_rates
@@ -46,21 +44,11 @@ def store_rates(config, out):
 	params = state.params
 
 	bytes_output = serialization.to_bytes(params)
-	# dict_output = serialization.to_state_dict(params)
-	# print('Dict output')
-	# print(dict_output)
-	# print('Bytes output')
-	# print(bytes_output)
 
 
 	f = open(path+'/params.txt', 'wb')
 	f.write(bytes_output)
 	f.close()
-
-	# f = open(path+'/params.txt', 'rb')
-	# 	b = f.read()
-	# print(b)
-	# serialization.from_bytes(params, bytes_output)
 
 
 if __name__ == '__main__':

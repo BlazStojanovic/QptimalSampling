@@ -77,7 +77,7 @@ def step_gumbel(key, G):
 
 	# rnd.exponential samples X ~ Exp(1), 
 	# for exponential distr. X/lambda ~ Exp(lambda)
-	tau = rnd.exponential(key) / lamb 
+	tau = rnd.exponential(key) / lamb
 	
 	# generate new random keys
 	key, subkey = rnd.split(key) 
@@ -89,7 +89,7 @@ def step_gumbel(key, G):
 
 
 if __name__ == '__main__':
-	# Just some quick testing, TODO do not forget to delete later
+	# Just some quick testing, TODO move into the test file
 
 	# test rate matrix
 	G = jnp.array([[1.2, 0.2, 0.7],
