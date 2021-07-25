@@ -12,7 +12,7 @@ import json
 
 from flax import serialization
 
-def store_rates(config, out):
+def store_rates(config, storedir, out):
 	dirs = [ f.name for f in os.scandir(storedir) if f.is_dir() ]
 	path = storedir+"1/" # first experiment dir
 
@@ -36,10 +36,11 @@ def store_rates(config, out):
 	with open(path+'/config.json', 'w') as fp:
 		json.dump(config.to_dict(), fp)
 	
-	state, loss = out
+	state, loss, eest = out
 
 	# save the loss 
 	np.save(path+'/'+config.loss_type+".npy", loss)
+	np.save(path+'/'+config.loss_type+"_eest.npy", eest)
 	
 	params = state.params
 
@@ -58,6 +59,6 @@ if __name__ == '__main__':
 	workdir = "tmp/ising/"
 	storedir = "ising_rates/"
 	
-	out = train_rates.train(config, workdir)
+	out = train_rates.train(config, storedir, workdir)
 	
-	store_rates(config, out)
+	store_rates(config, storedir, out)

@@ -98,7 +98,7 @@ if __name__ == '__main__':
 	hid_channels = 2
 
 	key = random.PRNGKey(123456789)
-	pcnn = pCNN(conv=CircularConv, 
+	pcnn = pCNN(conv=CircularConv,
 				act=nn.relu,
  				hid_channels=hid_channels, 
  				out_channels=out_channels,

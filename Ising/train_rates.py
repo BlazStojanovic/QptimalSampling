@@ -5,6 +5,8 @@ Training the Ising model
 import ml_collections
 import time
 import sys
+import os
+import json
 sys.path.append('../')
 
 from qsampling_utils.sampl_utils import step_max, step_gumbel
@@ -14,8 +16,9 @@ from ising_loss import ising_endpoint_loss, ising_potential
 import optax
 
 from flax import linen as nn
-from flax.metrics import tensorboard
+from flax import serialization
 from flax.training import train_state
+from flax.metrics import tensorboard
 
 import jax
 import jax.numpy as jnp
@@ -24,6 +27,41 @@ from jax import jit
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+def store_rates(config, storedir, out):
+	dirs = [ f.name for f in os.scandir(storedir) if f.is_dir() ]
+	path = storedir+"1/" # first experiment dir
+
+	# create new dir with appropriate run number
+	if not dirs:
+		print("Empty storage directory, creating first experiment dir /1/")
+		try:
+			os.mkdir(path)
+		except OSError:
+			print ("Creation of the directory %s failed" % path)
+	else:
+		dnum = 1 + max(list(map(int, dirs)))
+		path = storedir+"{}/".format(dnum)
+		print("Saving into expermient dir /{}/".format(dnum))
+		try:
+			os.mkdir(path)
+		except OSError:
+			print ("Creation of the directory %s failed" % path)
+
+	# store
+	with open(path+'/config.json', 'w') as fp:
+		json.dump(config.to_dict(), fp)
+	
+	state, loss, eest = out
+
+	# save the loss 
+	np.save(path+'/'+config.loss_type+".npy", loss)
+	np.save(path+'/'+config.loss_type+"_eest.npy", eest)
+	params = state.params
+	bytes_output = serialization.to_bytes(params)
+	f = open(path+'/params.txt', 'wb')
+	f.write(bytes_output)
+	f.close()
 
 def get_parameterisation(key, lattice_size, hid_channels, out_channels, kernel, layers):
 	"""
@@ -308,8 +346,12 @@ def train_epoch(config, key, state, epoch, model, params):
 	# randomly generate an initial state S0
 	S0 = initialise_lattice(key, config.lattice_size)
 
+	key, subkey = rnd.split(key)
+
 	# obtain trajectory
 	times, flips = get_trajectory1(key, model, params, S0, config)
+
+	key, subkey = rnd.split(key)
 
 	# permute the trajectory so you get a batch of trajectories with same endpoints
 	Ts, Fs = get_batch(key, config.batch_size, times, flips)
@@ -321,17 +363,17 @@ def train_epoch(config, key, state, epoch, model, params):
 	def loss_fn(params):
 		return ising_endpoint_loss(trajectories, Ts, Fs, model, params, config.J, config.g, config.lattice_size)
 
-	grad_fn = jax.value_and_grad(loss_fn)
-	vals, grads = grad_fn(state.params)
+	grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+	(vals, eest), grads = grad_fn(state.params)
 	state = state.apply_gradients(grads=grads)
 
 	epoch_time = time.time() - start_time
 	print('train_epoch: {} in {:0.2f} sec, loss: {:.4f}'.format(epoch, epoch_time, vals))	
 
-	return state, vals
+	return state, vals, eest
 
 
-def train(config: ml_collections.ConfigDict, workdir: str):
+def train(config: ml_collections.ConfigDict, storedir: str, workdir: str):
 	"""
 	Train basic 2D ising model case with endpoint loss 
 	
@@ -365,6 +407,8 @@ def train(config: ml_collections.ConfigDict, workdir: str):
 
 	# losses
 	ll = np.zeros((config.num_epochs,))
+	# eests
+	ees = np.zeros((config.num_epochs,))
 
 	print("Solving for L = {}, J = {}, g = {}".format(config.lattice_size, config.J, config.g))
 	print("T = {}, batch = {}".format(config.T, config.batch_size))
@@ -376,8 +420,13 @@ def train(config: ml_collections.ConfigDict, workdir: str):
 		key, subkey = rnd.split(key)
 		
 		# optimisation step on one batch
-		state, vals = train_epoch(config, key, state, epoch, pcnn, params)
+		state, vals, eest = train_epoch(config, key, state, epoch, pcnn, params)
 		ll[epoch-1] = vals
-		
+		ees[epoch-1] = eest
+
+		if (epoch-1) % 10 == 0:
+			print("Storing state at epoch {}".format(epoch))
+			store_rates(config, storedir, (state, ll, ees))
+
 	# return the trained rates
-	return state, ll
+	return state, ll, ees

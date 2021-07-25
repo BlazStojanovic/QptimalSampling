@@ -12,8 +12,8 @@ import jax.numpy as jnp
 import tensorflow as tf
 
 import sys
-sys.path.append("../")
 
+sys.path.append("../")
 import ising_loss as il
 import train_rates
 
@@ -86,7 +86,7 @@ class SampleTest(unittest.TestCase):
 				key, subkey = rnd.split(key)
 
 		Vs = il.ising_potentialV(batch, self.J, self.g)
-		print(Vs)
+		# print(Vs)
 		self.assertEqual((4, 10,), jnp.shape(Vs))
 
 	def test_full_batch_potential(self):
@@ -105,7 +105,7 @@ class SampleTest(unittest.TestCase):
 			for j in range(10):
 				# print(batch[i, j, :, :, :])
 				vs = il.ising_potential_single(batch[i, j, :, :, :], self.J, self.g)
-				print(vs)
+				# print(vs)
 				self.assertEqual(Vs[i, j], vs)
 
 if __name__ == '__main__':

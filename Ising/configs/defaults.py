@@ -11,7 +11,7 @@ def get_config():
 	config.b1 = 0.9
 	config.b2 = 0.999
 
-	config.batch_size = 32
+	config.batch_size = 4
 	config.num_epochs = 10
 
 	# architecture params
@@ -24,7 +24,7 @@ def get_config():
 
 	# physics model parameters
 	config.lattice_size = 3
-	config.T = 200
+	config.T = 2
 	config.max_trajectory_length = 10000
 	config.trajectory_length = 5 # this is for the alternative sampling approach
 	config.J = 1.0

@@ -16,7 +16,7 @@ sys.path.append("../")
 from qsampling_utils.sampl_utils import step_max, step_gumbel
 from qsampling_utils.pCNN import pCNN, CircularConv, check_pcnn_validity
 
-import train_rates
+import train_rates as tr
 import ising_loss as il
 
 def load_rates(dir_path):
@@ -38,7 +38,7 @@ def load_rates(dir_path):
 	key = jax.random.PRNGKey(1)
 	if config.architecture == "pCNN":
 		print("hello there pcnn")
-		params, model = train_rates.get_parameterisation(key, 
+		params, model = tr.get_parameterisation(key, 
 			config.lattice_size, 
 			config.hid_channels, 
 			config.out_channels, 
@@ -47,53 +47,53 @@ def load_rates(dir_path):
 	else:
 		raise ValueError("Only pCNN supported at the moment.")
 
-	# print(b)
-	# print(params)
 	ser = serialization.from_bytes(params, b)
-	# print(ser)
 
 	return model, ser, config
 
 
 def ground_state_estimate(key, model, params, config, therm_percent, Nsampl):
 	# random state
-	S0 = train_rates.initialise_lattice(key, config.lattice_size)
+	S0 = tr.initialise_lattice(key, config.lattice_size)
 	key, subkey = jax.random.split(key)
 
 	E = 0.0
 	sig = 0.0
 	T = 0.0
 
-	l = config.lattice_size
+	config.batch_size = 1
+	config.T = 10
 
-	for i in range(int(Nsampl*(1.0-therm_percent))):
-		rates = model.apply({'params': params['params']}, S0)
-		# print(rates[0, :, :, 0])
-		# print(S0[0, :, :, 0])
-		tau, s, key = step_max(key, rates[0, :, :, 0])
+	# obtain trajectory
+	times, flips = tr.get_trajectory1(key, model, params, S0, config)
 
-		# energy contribution of first state
-		V = il.ising_potential_single(S0, config.J, config.g)*tau
-		T1 = il.passive_difference_single(S0, config.J, config.g, model, params)*tau		
-		T2 = il.rate_transition(S0, s, config.J, config.g, l, model, params)
-		# print(V, T)
-		# print(V)
-		E += T1 + V + T2
+	# permute the trajectory so you get a batch of trajectories with same endpoints
+	Ts, Fs = tr.get_batch(key, config.batch_size, times, flips)
 
-		# time
-		T += tau
+	# get the trajectories
+	trajectories =  tr.flip_to_trajectory(S0, jnp.shape(Ts)[1], config.batch_size, Fs, config.lattice_size)
 
-		# change current state
-		S0 = S0.at[0, s // l, s % l, 0].multiply(-1)
+	rate_transitions = il.get_rate_transitions(config.J, config.g, config.lattice_size, model, params)
 
-		# if i % 10 == 0:
-		print(E/T)
-		
+	# print("Doublecheck that (Nb, Nt, L, L, 1), ", jnp.shape(trajectories))
+	# print("Doublecheck that (Nb, Nt, 1), ", jnp.shape(Ts))
+
+	logRN = 0.0
+	V = il.ising_potentialV(trajectories, config.J, config.g)
+	Vt = jnp.multiply(Ts.squeeze(), V.squeeze())
+
+	T1 = il.passive_difference(trajectories, config.J, config.g, model, params)
+	T1t = jnp.multiply(Ts.squeeze(), T1.squeeze())
+
+	T2 = rate_transitions(trajectories, Fs)
+	T2s = T2
+
+	E = V + T1 + T2
 
 	return E/T, sig
 
 if __name__ == '__main__':
-	path = "ising_rates/48" # path to the directory with learned rates
+	path = "ising_rates/79" # path to the directory with learned rates
 	key = jax.random.PRNGKey(1)
 	Nsampl = 1000
 	therm_percent = 0.0
