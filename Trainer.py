@@ -31,7 +31,6 @@ from flax import serialization
 from flax.training import train_state
 import flax.training.checkpoints as checks
 
-
 @dataclass
 class Trainer:
 	experiment_name: str
@@ -161,6 +160,7 @@ class Trainer:
 					time += tau
 
 					# TODO add condition if the length of traj exeeds the len of initial storage arrays
+					# remember to set to previous iterations!
 
 					return S0, times, flips, rates, key, it, time, Tmax
 
