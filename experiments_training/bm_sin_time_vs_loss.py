@@ -10,13 +10,15 @@ if __name__ == '__main__':
 	
 	Ts = [10, 50, 100, 150, 200]
 
-	for nbc in N_bs:
+	for t in Ts:
 		# IO details
 		conf = iconf.get_time_vs_loss()
 		conf.T = t
+		conf.t_vector_increment = int(t*conf.t_vector_increment//10) # see how trajectories are generated
+		print(conf.t_vector_increment)
 
 		experiment_name = "time_vs_loss"
-		out = "T{}".format(int(nbc))
+		out = "T{}".format(int(t))
 
 		# construct experiment
 		ising_ex1 = tr.Trainer(experiment_name=experiment_name,

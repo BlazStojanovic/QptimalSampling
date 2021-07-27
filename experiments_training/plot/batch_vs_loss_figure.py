@@ -12,14 +12,14 @@ matplotlib.rcParams['text.latex.preamble'] = r'\usepackage{libertine} \usepackag
 v10 = np.load("../data/batch_vs_loss/nb10/final/valids.npy")
 v40 = np.load("../data/batch_vs_loss/nb40/final/valids.npy")
 v70 = np.load("../data/batch_vs_loss/nb70/final/valids.npy")
-# v100 = np.load("../data/batch_vs_loss/nb64l20/final/valids.npy")
-# v130 = np.load("../data/batch_vs_loss/nb96/final/valids.npy")
+# v100 = np.load("../data/batch_vs_loss/nb100/final/valids.npy")
+# v130 = np.load("../data/batch_vs_loss/nb130/final/valids.npy")
 
 l10 = np.load("../data/batch_vs_loss/nb10/final/loss.npy")
 l40 = np.load("../data/batch_vs_loss/nb40/final/loss.npy")
 l70 = np.load("../data/batch_vs_loss/nb70/final/loss.npy")
-# l100 = np.load("../data/batch_vs_loss/nb64l20/final/loss.npy")
-# l130 = np.load("../data/batch_vs_loss/nb96/final/loss.npy")
+# l100 = np.load("../data/batch_vs_loss/nb100/final/loss.npy")
+# l130 = np.load("../data/batch_vs_loss/nb130/final/loss.npy")
 
 Evmc = -19.13084
 
@@ -35,4 +35,5 @@ plt.legend()
 plt.ylabel(r'${\mathrm{Var}}_{\mathbb{P}_v}\left[ \log \frac{\mathrm{d} \mathbb{P}_v}{\mathrm{d} \mathbb{P}_{\mathrm{FK}}} \right]$')
 plt.xlabel('epoch no.')
 plt.savefig("../figures/bvl_single.pdf", bbox_inches='tight')
+plt.savefig("../../../Thesis/Chapter6/Figs/Vector/bvl_single.pdf", bbox_inches='tight')
 plt.show()

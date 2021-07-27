@@ -113,7 +113,7 @@ def get_time_vs_loss():
 	config.optimizer = 'adam'
 
 	### training details
-	config.batch_size = 64
+	config.batch_size = 50
 	config.num_epochs = 400
 	config.chpt_freq = 3 # checkpoint frequency
 
@@ -142,7 +142,7 @@ def get_time_vs_loss():
 
 	### simulation time
 	config.T = 0
-	config.t_vector_increment = 2000 # see how trajectories are generated
+	config.t_vector_increment = 120 # see how trajectories are generated
 
 	# sampling param
 	config.sample_step = 'gumble' # gumble or max step

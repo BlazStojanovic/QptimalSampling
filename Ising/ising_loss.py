@@ -127,7 +127,6 @@ def ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size)
 	T2 = rate_transitions(trajectories, Fs)
 	T2s = jnp.sum(T2, axis=1).squeeze()
 
-
 	logRN = T1t + T2s + Vt
 	Eest = Vt[0] + T1t[0] + T2s[0]
 
@@ -155,3 +154,14 @@ def get_Ieploss(J, g, lattice_size, dim):
 	"""
 	Return Ising endpoint loss for a fixed lattice size, J and g constants
 	"""
+	if dim == 2:
+		f = lambda model, params, trajectories, Ts, Fs: ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size)
+	else:
+		raise NotImplementedError
+
+	return f
+
+
+
+
+

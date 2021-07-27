@@ -16,7 +16,7 @@ from qsampling_utils.sampl_utils import step_max, step_gumbel
 from qsampling_utils.pCNN import pCNN, CircularConv, check_pcnn_validity
 
 # Lattice imports
-from Ising.ising_loss import ising_endpoint_loss
+from Ising.ising_loss import ising_endpoint_loss, get_Ieploss
 
 # Jax imports
 import jax
@@ -52,28 +52,19 @@ class Trainer:
 		"""
 		self.setup_experiment_folder()
 
-		params, model, tx, state = self.init_training()
-
-		# todo fix to be universal!
-		print("Solving for L = {}, J = {}, g = {}".format(self.config.L, self.config.J, self.config.g))
-		print("T = {}, batch = {}".format(self.config.T, self.config.batch_size))
-		print("-----------------------------------------------------------------------------------")
-
-		# loses
-		loss_ = jnp.zeros((self.config.num_epochs,))
-		valids_ = jnp.zeros((self.config.num_epochs, self.config.no_valids))
+		params, model, tx, state, loss_, valids_, epoch_start = self.init_training()
 
 		key = rnd.PRNGKey(prngn)
-		for epoch in range(1, self.config.num_epochs+1):
+		for epoch in range(epoch_start, self.config.num_epochs+1):
 			# split subkeys for shuffling purpuse
 			key, subkey = rnd.split(key)
 
 			# optimisation step on one batch
-			state, vals, eest, epoch_time, it = self.train_epoch(subkey, state, epoch, model, params) # todo, fix for broader validation
+			state, vals, eest, epoch_time, it = self.train_epoch(subkey, state, epoch, model, params)
 			loss_ = loss_.at[epoch-1].set(vals)
-			valids_ = valids_.at[epoch-1, 0].set(eest) # todo, fix for generality
-			valids_ = valids_.at[epoch-1, 1].set(epoch_time) # todo, fix for generality
-			valids_ = valids_.at[epoch-1, 2].set(it) # todo, fix for generality
+			valids_ = valids_.at[epoch-1, 0].set(eest)
+			valids_ = valids_.at[epoch-1, 1].set(epoch_time)
+			valids_ = valids_.at[epoch-1, 2].set(it)
 
 			if ((epoch % self.config.chpt_freq == 0) and epoch > 0) and save_ckps:
 				self.save_chp(epoch, state, loss_, valids_)
@@ -100,7 +91,16 @@ class Trainer:
 		# construct train state
 		state = self.get_train_state(params, model, tx)
 
-		return params, model, tx, state
+		if self.from_beg:
+					# construct storage
+			loss_ = jnp.zeros((self.config.num_epochs,))
+			valids_ = jnp.zeros((self.config.num_epochs, self.config.no_valids))
+
+			epoch_start = 1
+		else: 
+			raise NotImplementedError
+
+		return params, model, tx, state, loss_, valids_, epoch_start
 
 	def setup_epoch(self):
 		# setup functions for train epoch
@@ -109,13 +109,17 @@ class Trainer:
 			Initialise the lattice with an appropriate shape
 			"""
 			if self.config.lattice_model == 'ising':
+				print("Solving for L = {}, J = {}, g = {}".format(self.config.L, self.config.J, self.config.g))
+				print("T = {}, batch = {}".format(self.config.T, self.config.batch_size))
+				print("-----------------------------------------------------------------------------------")
+
 				if dim == 1:
 					return rnd.choice(key, 2, shape=(1, L, 1, 1))*(-2)+1
 				elif dim == 2:
 					return rnd.choice(key, 2, shape=(1, L, L, 1))*(-2)+1
 				else:
 					raise ValueError("Only dims 1 or 2 allowed")
-
+				
 			elif self.config.lattice_model == 'heisenberg':
 				raise ValueError("hesenberg model not yet implemented")
 			else:
@@ -145,6 +149,17 @@ class Trainer:
 				# initial rates
 				rates = model.apply({'params': params['params']}, S0)
 
+				# be careful, the Nmax must be sufficiently large for the simulation to work, JAX wont cry out 
+				# if out of bounds assignment is called on times or flips! 
+				# def len_check(i):
+				# 	return i >= Nmax
+
+				# def trf(operand):
+				# 	return jnp.pad(operand, (0, Nmax)) # if i geq Nmax pad array, check edge case?
+
+				# def faf(operand):
+				# 	return operand
+
 				def loop_fun(loop_state):
 					S0, times, flips, rates, key, it, time, Tmax = loop_state
 					tau, s, key = step_gumbel(key, rates[0, :, :, 0])
@@ -159,8 +174,9 @@ class Trainer:
 					it += 1
 					time += tau
 
-					# TODO add condition if the length of traj exeeds the len of initial storage arrays
-					# remember to set to previous iterations!
+					# pred = len_check(it)
+					# times = jax.lax.cond(pred, trf, faf, times)
+					# flips = jax.lax.cond(pred, trf, faf, flips)
 
 					return S0, times, flips, rates, key, it, time, Tmax
 
@@ -270,9 +286,6 @@ class Trainer:
 
 			return trajectories
 
-		# def glf():
-		# TODO
-
 		## lattice initialisation
 		self.initialise_lattice = lambda key: init_lat(key, self.config.dim, self.config.L)
 		self.initialise_lattice = jit(self.initialise_lattice) # jit the init
@@ -297,7 +310,10 @@ class Trainer:
 		self.flip_to_trajectory = ftt
 
 		## loss function
-		# TODO
+		if self.config.lattice_model == 'ising':
+			self.lossf = get_Ieploss(self.config.J, self.config.g, self.config.L, self.config.dim)
+		else:
+			raise NotImplementedError
 
 		def train_epoch(key, state, epoch, model, params):
 			"""
@@ -321,7 +337,6 @@ class Trainer:
 			# obtain trajectory
 			times, flips, it = self.get_trajectory(model, params, key, S0)
 			times, flips = times[:it, :], flips[:it, :]
-
 			key, subkey = rnd.split(key)
 
 			# permute the trajectory so you get a batch of trajectories with same endpoints
@@ -332,10 +347,9 @@ class Trainer:
 
 			# make training step and store metrics
 			def loss_fn(params):
-				return ising_endpoint_loss(trajectories, Ts, Fs, model, params, self.config.J, self.config.g, self.config.L)
+				return self.lossf(model, params, trajectories, Ts, Fs)
 
-			# loss_fn = self.get_loss_func()
-
+			# get rid of trajectories, flips and arrays
 			grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
 			(vals, eest), grads = grad_fn(state.params)
 			state = state.apply_gradients(grads=grads)
@@ -347,7 +361,6 @@ class Trainer:
 			return state, vals, eest, epoch_time, it
 
 		self.train_epoch = train_epoch
-
 
 	def setup_experiment(self):
 		# setup rate param function
@@ -406,6 +419,9 @@ class Trainer:
 
 		# setup epoch step
 		self.setup_epoch()
+
+		# indicate setup from scratch
+		self.from_beg = True
 
 	def setup_experiment_folder(self):
 
