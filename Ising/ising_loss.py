@@ -10,36 +10,43 @@ from flax.linen import jit as fjit
 
 import logging
 
-@jit
-def ising_potential_single(S, J, g):
+def ising_potential_single(S, J, g, dim):
 	"""
 	Ising potential
 
 	Params:
 	-------
-	S -- state (1, l, l, 1) or (1, l, 1, 1) # TODO test for D=1
+	S -- state (1, l, l, 1) or (1, l, 1)
 	J -- interaction coefficient
 	g -- coupling coefficient
 	
 	"""
-
 	z = S
-	zu = jnp.roll(z, 1, axis=-3)
-	zr = jnp.roll(z, 1, axis=-2)
 
-	# first term
-	potential = z*zu + z*zr
-	potential = -J*jnp.sum(potential, axis=(-1, -2, -3))
+	if dim == 2:
+		zu = jnp.roll(z, 1, axis=-3)
+		zr = jnp.roll(z, 1, axis=-2)
 
-	#second term
-	potential -= g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2, -3))
+		# first term
+		potential = z*zu + z*zr
+		potential = -J*jnp.sum(potential, axis=(-1, -2, -3)) # (1, l, l, 1) are (-4, -3, -2, -1)
+
+		#second term
+		potential -= g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2, -3))
+
+	elif dim == 1:
+		zr = jnp.roll(z, 1, axis=-2) # (1, l, 1) are (-3, -2, -1)
+		potential = z*zr
+		potential =  -J*jnp.sum(potential, axis=(-1, -2))
+		potential -= g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2))
+
 	return potential
 
 # vectorize the ising potential
-ising_potential = vmap(ising_potential_single, in_axes=(0, None, None), out_axes=(0))
-ising_potentialV = vmap(ising_potential, in_axes=(0, None, None), out_axes=(0))
+ising_potential = vmap(ising_potential_single, in_axes=(0, None, None, None), out_axes=(0))
+ising_potentialV = vmap(ising_potential, in_axes=(0, None, None, None), out_axes=(0))
 
-def passive_difference_single(S, J, g, model, params):
+def passive_difference_single(S, J, g, model, params, dim):
 	"""
 	Returns the sum of the difference between the passive and variational rates for
 	the current state. Necessary for the second term of the endpoint loss.
@@ -56,15 +63,18 @@ def passive_difference_single(S, J, g, model, params):
 	--------
 	rate_difference
 	"""
-
-	rates = jnp.sum(model.apply({'params': params['params']}, S), axis=(-1, -2, -3))
-	passive_rates = g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2, -3))
+	if dim == 2:
+		rates = jnp.sum(model.apply({'params': params['params']}, S), axis=(-1, -2, -3))
+		passive_rates = g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2, -3))
+	elif dim == 1:
+		rates = jnp.sum(model.apply({'params': params['params']}, S), axis=(-1, -2))
+		passive_rates = g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2))
 	
 	return passive_rates - rates
 
-passive_difference = vmap(passive_difference_single, in_axes=(0, None, None, None, None), out_axes=(0))
+passive_difference = vmap(passive_difference_single, in_axes=(0, None, None, None, None, None), out_axes=(0))
 
-def rate_transition_single(S, f, J, g, lattice_size, model, params):
+def rate_transition_single(S, f, J, g, lattice_size, model, params, dim):
 	"""
 	Returns a term for a single n of the third loss term (transition rate between subsequent states)
 	Params:
@@ -79,26 +89,35 @@ def rate_transition_single(S, f, J, g, lattice_size, model, params):
 	--------
 	diff -- single term of the third loss
 	"""
-	rates = model.apply({'params': params['params']}, S[None, :, :, :]) # get current rates
-	# rates = jnp.ones(jnp.shape(S))
-	rate = rates[f//lattice_size, f%lattice_size, 0] # the rate corresponding to going to next state
+	if dim == 2:
+		rates = model.apply({'params': params['params']}, S[None, :, :, :]) # get current rates
+		# rates = jnp.ones(jnp.shape(S))
+		rate = rates[f//lattice_size, f%lattice_size, 0] # the rate corresponding to going to next state
 
-	# from passive rates
-	passive = g
+		# from passive rates
+		passive = g
 
+	elif dim == 1:
+		rates = model.apply({'params': params['params']}, S[None, :, :]) # get current rates
+		# rates = jnp.ones(jnp.shape(S))
+		rate = rates[f%lattice_size, 0] # the rate corresponding to going to next state
+
+		# from passive rates
+		passive = g
+		
 	return jnp.log(rate/passive)
 
-def get_rate_transition(J, g, l, model, params):
+def get_rate_transition(J, g, l, model, params, dim):
 	def nf(Ss, Fs):
-		return rate_transition_single(Ss, Fs, J, g, l, model, params)
+		return rate_transition_single(Ss, Fs, J, g, l, model, params, dim)
 	return vmap(nf, in_axes=(0, 0), out_axes=(0))
 
-def get_rate_transitions(J, g, l, model, params):
-	nf = get_rate_transition(J, g, l, model, params)
+def get_rate_transitions(J, g, l, model, params, dim):
+	nf = get_rate_transition(J, g, l, model, params, dim)
 
 	return vmap(nf, in_axes=(1, 1), out_axes=1)
 
-def ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size):
+def ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size, dim):
 	"""
 	Loss for fixed trajectory endpoints
 
@@ -115,13 +134,13 @@ def ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size)
 	"""
 
 	# construct function for each term
-	rate_transitions = get_rate_transitions(J, g, lattice_size, model, params)
+	rate_transitions = get_rate_transitions(J, g, lattice_size, model, params, dim)
 
 	logRN = 0.0
-	V = ising_potentialV(trajectories, J, g)
+	V = ising_potentialV(trajectories, J, g, dim)
 	Vt = jnp.sum(jnp.multiply(Ts.squeeze(), V.squeeze()), axis=1)
 
-	T1 = passive_difference(trajectories, J, g, model, params)
+	T1 = passive_difference(trajectories, J, g, model, params, dim)
 	T1t = jnp.sum(jnp.multiply(Ts.squeeze(), T1.squeeze()), axis=1)
 
 	T2 = rate_transitions(trajectories, Fs)
@@ -154,10 +173,7 @@ def get_Ieploss(J, g, lattice_size, dim):
 	"""
 	Return Ising endpoint loss for a fixed lattice size, J and g constants
 	"""
-	if dim == 2:
-		f = lambda model, params, trajectories, Ts, Fs: ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size)
-	else:
-		raise NotImplementedError
+	f = lambda model, params, trajectories, Ts, Fs: ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size, dim)
 
 	return f
 

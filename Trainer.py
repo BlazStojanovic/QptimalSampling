@@ -10,16 +10,18 @@ import json
 import numpy as np
 
 from dataclasses import dataclass
+import resource
 
 # qsampling utils imports 
 from qsampling_utils.sampl_utils import step_max, step_gumbel
-from qsampling_utils.pCNN import pCNN, CircularConv, check_pcnn_validity
+from qsampling_utils.pCNN import *
 
 # Lattice imports
 from Ising.ising_loss import ising_endpoint_loss, get_Ieploss
 
 # Jax imports
 import jax
+from jax.interpreters import xla
 import jax.numpy as jnp
 import jax.random as rnd
 from jax import jit, vmap, pmap
@@ -52,19 +54,27 @@ class Trainer:
 		"""
 		self.setup_experiment_folder()
 
-		params, model, tx, state, loss_, valids_, epoch_start = self.init_training()
+		params, model, tx, state, loss_, valids_, epoch_start = self.init_training(prngn=prngn)
 
 		key = rnd.PRNGKey(prngn)
+		key, subkey = rnd.split(key)
 		for epoch in range(epoch_start, self.config.num_epochs+1):
 			# split subkeys for shuffling purpuse
 			key, subkey = rnd.split(key)
 
 			# optimisation step on one batch
 			state, vals, eest, epoch_time, it = self.train_epoch(subkey, state, epoch, model, params)
+			print('Memory usage: {} (Mb)'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)*0.001)
+
 			loss_ = loss_.at[epoch-1].set(vals)
 			valids_ = valids_.at[epoch-1, 0].set(eest)
 			valids_ = valids_.at[epoch-1, 1].set(epoch_time)
 			valids_ = valids_.at[epoch-1, 2].set(it)
+
+			if jnp.isnan(vals):
+				break
+
+			# xla._xla_callable.cache_clear()
 
 			if ((epoch % self.config.chpt_freq == 0) and epoch > 0) and save_ckps:
 				self.save_chp(epoch, state, loss_, valids_)
@@ -114,7 +124,7 @@ class Trainer:
 				print("-----------------------------------------------------------------------------------")
 
 				if dim == 1:
-					return rnd.choice(key, 2, shape=(1, L, 1, 1))*(-2)+1
+					return rnd.choice(key, 2, shape=(1, L, 1))*(-2)+1
 				elif dim == 2:
 					return rnd.choice(key, 2, shape=(1, L, L, 1))*(-2)+1
 				else:
@@ -149,23 +159,17 @@ class Trainer:
 				# initial rates
 				rates = model.apply({'params': params['params']}, S0)
 
-				# be careful, the Nmax must be sufficiently large for the simulation to work, JAX wont cry out 
-				# if out of bounds assignment is called on times or flips! 
-				# def len_check(i):
-				# 	return i >= Nmax
-
-				# def trf(operand):
-				# 	return jnp.pad(operand, (0, Nmax)) # if i geq Nmax pad array, check edge case?
-
-				# def faf(operand):
-				# 	return operand
-
 				def loop_fun(loop_state):
 					S0, times, flips, rates, key, it, time, Tmax = loop_state
-					tau, s, key = step_gumbel(key, rates[0, :, :, 0])
 
 					# change current state
-					S0 = S0.at[0, s // l, s % l, 0].multiply(-1) # this should work for 1d as well, s // l will always be 0
+					if dim == 2:
+						tau, s, key = step_gumbel(key, rates[0, :, :, 0])
+						S0 = S0.at[0, s // l, s % l, 0].multiply(-1) # this should work for 1d as well, s // l will always be 0
+					elif dim == 1:
+						tau, s, key = step_gumbel(key, rates[0, :, 0])
+						S0 = S0.at[0, s % l, 0].multiply(-1) # this should work for 1d as well, s // l will always be 0
+
 					times = times.at[it, 0].set(tau)
 					flips = flips.at[it, 0].set(s)
 
@@ -173,11 +177,6 @@ class Trainer:
 					rates = model.apply({'params': params['params']}, S0)
 					it += 1
 					time += tau
-
-					# pred = len_check(it)
-					# times = jax.lax.cond(pred, trf, faf, times)
-					# flips = jax.lax.cond(pred, trf, faf, flips)
-
 					return S0, times, flips, rates, key, it, time, Tmax
 
 				def cond_fun(loop_state):
@@ -190,18 +189,10 @@ class Trainer:
 				loop_state = S0, times, flips, rates, key, it, time, T
 				S0, times, flips, rates, key, it, time, T = jax.lax.while_loop(cond_fun, loop_fun, loop_state)
 
-				# print(time)
-				# print(it)
 				# fix the last time
 				times = times.at[it-1, 0].add((T-time))
-				# print(jnp.sum(times))
-
-				# # waiting time in the last state, the flip can be discarded
-				# tau, s, key = step_max(key, rates[0, :, :, 0])
-				# times = times.at[-1, 0].set(tau)
-				# flips = flips.at[-1, 0].set(s)
 				
-				return times, flips, it # just up to last iteration
+				return times, flips, it
 			
 			elif self.config.lattice_model == 'heisenberg':
 				raise NotImplementedError
@@ -250,7 +241,7 @@ class Trainer:
 
 			return Ts, Fs
 
-		def f2p(S0, Nt, Nb, Fs, l):
+		def f2p(S0, Nt, Nb, Fs, l, dim):
 			"""
 			Construct trajectory from the initial state and spin flips
 
@@ -273,10 +264,14 @@ class Trainer:
 				trajectories = loop_state
 
 				# at i-th time step, we multiply appropriate pixels with -1
-				F = jnp.ones((Nb, l, l, 1))
-				F = F.at[jnp.arange(Nb), Fs[:, i-1, 0] // l, Fs[:, i-1, 0] % l, :].set(-1)
-
-				trajectories = trajectories.at[:, i, :, :, :].set(jnp.multiply(trajectories[:, i-1, :, :, :], F))
+				if dim == 2:
+					F = jnp.ones((Nb, l, l, 1))
+					F = F.at[jnp.arange(Nb), Fs[:, i-1, 0] // l, Fs[:, i-1, 0] % l, :].set(-1)
+					trajectories = trajectories.at[:, i, :, :, :].set(jnp.multiply(trajectories[:, i-1, :, :, :], F))
+				elif dim == 1:
+					F = jnp.ones((Nb, l, 1))
+					F = F.at[jnp.arange(Nb), Fs[:, i-1, 0] % l, :].set(-1)
+					trajectories = trajectories.at[:, i, :, :].set(jnp.multiply(trajectories[:, i-1, :, :], F))
 
 				return trajectories
 
@@ -306,7 +301,7 @@ class Trainer:
 		# self.get_trajectory = jit(self.get_trajectory)
 
 		## construct state trajectories from the flips
-		ftt = lambda S0, Nt, Fs: f2p(S0, Nt, self.config.batch_size, Fs, self.config.L)
+		ftt = lambda S0, Nt, Fs: f2p(S0, Nt, self.config.batch_size, Fs, self.config.L, self.config.dim)
 		self.flip_to_trajectory = ftt
 
 		## loss function
@@ -345,17 +340,21 @@ class Trainer:
 			# get the trajectories
 			trajectories =  self.flip_to_trajectory(S0, jnp.shape(Ts)[1], Fs)
 
-			# make training step and store metrics
+			# # make training step and store metrics
 			def loss_fn(params):
 				return self.lossf(model, params, trajectories, Ts, Fs)
 
 			# get rid of trajectories, flips and arrays
 			grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
 			(vals, eest), grads = grad_fn(state.params)
-			state = state.apply_gradients(grads=grads)
+			
+			# (vals, eest), grads = jax.value_and_grad(self.lossf, argnums=[1], has_aux=True)(model, params, trajectories, Ts, Fs)
+			# # print(grads)
+			# state = state.apply_gradients(grads=grads[0])
 
 			epoch_time = time.time() - start_time
 			print('train_epoch: {} in {:0.2f} sec, loss: {:.4f}, no iterations: {}, energy est: {:.4f}'.format(epoch, epoch_time, vals, it, eest))	
+
 			# logging.debug('train_epoch: {} in {:0.2f} sec, loss: {:.4f}, no iterations: {}, energy est: {:.4f}'.format(epoch, epoch_time, vals, it, eest))	
 
 			return state, vals, eest, epoch_time, it
@@ -380,25 +379,36 @@ class Trainer:
 				if self.config.dim == 2:
 					init_val = jnp.ones((1, self.config.L, self.config.L, 1), jnp.float32)
 				elif self.config.dim == 1:
-					init_val = jnp.ones((1, 1, self.config.L, 1), jnp.float32)
+					init_val = jnp.ones((1, self.config.L, 1), jnp.float32)
 				else:
 					raise ValueError("Only one and two dimensions supported (dim=1 or dim=2)")
 
 				# check correctness of params
-				check_pcnn_validity(self.config.L, self.config.kernel_size, self.config.layers)
+				check_pcnn_validity(self.config.L, self.config.kernel_size, self.config.layers, self.config.dim)
 
 				# periodic CNN object
-				pcnn = pCNN(conv=CircularConv, 
+				if self.config.dim == 2:
+					pcnn = pCNN2d(conv=CircularConv2d, 
 							act=nn.softplus,
 			 				hid_channels=self.config.hid_channels, 
 			 				out_channels=self.config.out_channels,
 							K=self.config.kernel_size, 
 							layers=self.config.layers, 
 							strides=(1,1))
+				
+				elif self.config.dim == 1:
+					pcnn = pCNN1d(conv=CircularConv1d, 
+						act=nn.softplus,
+		 				hid_channels=self.config.hid_channels, 
+		 				out_channels=self.config.out_channels,
+						K=self.config.kernel_size, 
+						layers=self.config.layers, 
+						strides=(1,))
 
 				# initialise the network
 				initial_params = pcnn.init({'params': key}, init_val)
 				return initial_params, pcnn
+
 			self.get_rate_parametrisation = get_pcnn
 		else:
 			raise ValueError("Only periodic CNN (pcnn) available.")
@@ -478,6 +488,3 @@ class Trainer:
 
 	def setup_from_checkpoint(self):
 		pass
-
-
-
