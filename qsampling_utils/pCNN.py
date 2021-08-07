@@ -33,7 +33,7 @@ class CircularConv2d(nn.Module):
 class CircularConv1d(nn.Module):
 	"""Circular convolution, equivalent to padding_mode='circular' in Torch"""
 	channels: int
-	K: Union[int, Iterable[int]]
+	K: int
 	strides: Tuple[int] = (1)
 	@nn.compact
 	def __call__(self, x):
@@ -61,7 +61,7 @@ class PeriodicBlock1d(nn.Module):
 	conv: ModuleDef
 	act: Callable
 	channels: int
-	K: Union[int, Iterable[int]]
+	K: int
 	strides: Tuple[int] = (1)
 
 	@nn.compact

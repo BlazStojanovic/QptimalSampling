@@ -64,7 +64,7 @@ class Trainer:
 
 			# optimisation step on one batch
 			state, vals, eest, epoch_time, it = self.train_epoch(subkey, state, epoch, model, params)
-			print('Memory usage: {} (Mb)'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)*0.001)
+			print('Memory usage: {} (Mb)'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*0.001))
 
 			loss_ = loss_.at[epoch-1].set(vals)
 			valids_ = valids_.at[epoch-1, 0].set(eest)
