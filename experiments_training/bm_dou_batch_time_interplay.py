@@ -8,9 +8,8 @@ import numpy as np
 
 if __name__ == '__main__':
 	
-	# N_bs =  (np.arange(10)*11 + 2).astype(int) # range 2 - 100
 	N_bs =  (np.arange(0, 11)*10 + 2).astype(int) # range 2 - 100
-	Ts =  (np.arange(10,11)*10 + 2).astype(int) # range 2 - 100
+	Ts =  (np.arange(0, 11)*10 + 2).astype(int) # range 2 - 100
 
 	for Nb in N_bs:
 		for t in Ts:

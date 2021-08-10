@@ -92,23 +92,37 @@ class Trainer:
 		# PRNGKey is fixed for reproducibility
 		key = rnd.PRNGKey(prngn)
 
-		# variational approximation of the rates
-		params, model = self.get_rate_parametrisation(key)
-
 		# optimiser init
 		tx = self.get_optimiser()
 
-		# construct train state
-		state = self.get_train_state(params, model, tx)
+		# variational approximation of the rates
+		params, model = self.get_rate_parametrisation(key)
 
+		# construct storage
+		loss_ = jnp.zeros((self.config.num_epochs,))
+		valids_ = jnp.zeros((self.config.num_epochs, self.config.no_valids))
+	
 		if self.from_beg:
-					# construct storage
+			epoch_start = 1
+		else: 
 			loss_ = jnp.zeros((self.config.num_epochs,))
 			valids_ = jnp.zeros((self.config.num_epochs, self.config.no_valids))
 
-			epoch_start = 1
-		else: 
-			raise NotImplementedError
+			# load loss and rates from checkpoint
+			loaded_loss = np.load(self.load_folder + 'loss.npy')
+			loaded_valids = np.load(self.load_folder + 'valids.npy')
+
+			loss_ = loss_.at[:np.shape(loaded_loss)[0]].set(loaded_loss)
+			valids_ = valids_.at[:np.shape(loaded_valids)[0], :].set(loaded_valids)
+
+			epoch_start = jnp.shape(loaded_loss)[0] # start at the checkpoint
+
+			# use learned parameters from last chkp instead of the random ones
+			# params = self.load_params(self.load_folder)
+			params = self.load_params_old_pcnn(self.load_folder)
+
+		# construct train state
+		state = self.get_train_state(params, model, tx)
 
 		return params, model, tx, state, loss_, valids_, epoch_start
 
@@ -165,10 +179,10 @@ class Trainer:
 					# change current state
 					if dim == 2:
 						tau, s, key = step_gumbel(key, rates[0, :, :, 0])
-						S0 = S0.at[0, s // l, s % l, 0].multiply(-1) # this should work for 1d as well, s // l will always be 0
+						S0 = S0.at[0, s // l, s % l, 0].multiply(-1)
 					elif dim == 1:
 						tau, s, key = step_gumbel(key, rates[0, :, 0])
-						S0 = S0.at[0, s % l, 0].multiply(-1) # this should work for 1d as well, s // l will always be 0
+						S0 = S0.at[0, s % l, 0].multiply(-1)
 
 					times = times.at[it, 0].set(tau)
 					flips = flips.at[it, 0].set(s)
@@ -350,7 +364,7 @@ class Trainer:
 			
 			# (vals, eest), grads = jax.value_and_grad(self.lossf, argnums=[1], has_aux=True)(model, params, trajectories, Ts, Fs)
 			# # print(grads)
-			# state = state.apply_gradients(grads=grads[0])
+			state = state.apply_gradients(grads=grads)
 
 			epoch_time = time.time() - start_time
 			print('train_epoch: {} in {:0.2f} sec, loss: {:.4f}, no iterations: {}, energy est: {:.4f}'.format(epoch, epoch_time, vals, it, eest))	
@@ -388,13 +402,21 @@ class Trainer:
 
 				# periodic CNN object
 				if self.config.dim == 2:
-					pcnn = pCNN2d(conv=CircularConv2d, 
+					pcnn = pCNN(conv=CircularConv, 
 							act=nn.softplus,
 			 				hid_channels=self.config.hid_channels, 
 			 				out_channels=self.config.out_channels,
 							K=self.config.kernel_size, 
 							layers=self.config.layers, 
 							strides=(1,1))
+
+					# pcnn = pCNN2d(conv=CircularConv2d, 
+					# 		act=nn.softplus,
+			 	# 			hid_channels=self.config.hid_channels, 
+			 	# 			out_channels=self.config.out_channels,
+					# 		K=self.config.kernel_size, 
+					# 		layers=self.config.layers, 
+					# 		strides=(1,1))
 				
 				elif self.config.dim == 1:
 					pcnn = pCNN1d(conv=CircularConv1d, 
@@ -486,5 +508,63 @@ class Trainer:
 		f.write(bytes_output)
 		f.close()
 
-	def setup_from_checkpoint(self):
-		pass
+	def load_params(self, dir_path):
+		"""
+		Loads rates from one of the experiment folders, 
+		returns everything needed for importance sampling the model
+		"""
+
+		# load binary
+		f = open(dir_path+'/params.txt', 'rb')
+		b = f.read()
+		
+		key = jax.random.PRNGKey(0)
+		params, model = self.get_rate_parametrisation(key)
+
+		# get params
+		ser = serialization.from_bytes(params, b)
+		
+		return ser
+
+	def load_params_old_pcnn(self, dir_path):
+		"""
+		Loads rates from one of the experiment folders, 
+		returns everything needed for importance sampling the model
+		"""
+
+		def gp(key, lattice_size, hid_channels, out_channels, kernel, layers):
+			
+			# initialisation size sample
+			init_val = jnp.ones((1, lattice_size, lattice_size, 1), jnp.float32)
+			
+			# periodic CNN object
+			pcnn = pCNN(conv=CircularConv, 
+						act=nn.softplus,
+		 				hid_channels=hid_channels, 
+		 				out_channels=out_channels,
+						K=kernel, 
+						layers=layers, 
+						strides=(1,1))
+
+			# initialise the network
+			initial_params = pcnn.init({'params':key}, init_val)
+
+			return initial_params, pcnn
+
+
+		# load binary
+		f = open(dir_path+'/params.txt', 'rb')
+		b = f.read()
+		
+		key = jax.random.PRNGKey(0)
+		params, model = self.get_rate_parametrisation(key)
+
+		# get params
+		ser = serialization.from_bytes(params, b)
+		
+		return ser
+
+		
+	def load_from_chp(self, dir_path):
+		self.from_beg = False
+		self.load_folder = dir_path

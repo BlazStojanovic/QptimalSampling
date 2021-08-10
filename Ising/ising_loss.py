@@ -168,6 +168,28 @@ def ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size,
 
 	return jnp.var(logRN, ddof=1), jax.lax.stop_gradient(Eest)/jnp.sum(Ts[0, :, 0])
 
+# def Ieploss(trajectories, Ts, Fs, model, params, J, g, lattice_size, dim)
+
+# 	grt = lambda: model, J, g, lattice_size
+
+# 	def ipl(model, params, trajectories, Ts, Fs):
+# 			rate_transitions = get_rate_transitions(J, g, lattice_size, model, params, dim)
+
+# 			logRN = 0.0
+# 			V = ising_potentialV(trajectories, J, g, dim)
+# 			Vt = jnp.sum(jnp.multiply(Ts.squeeze(), V.squeeze()), axis=1)
+
+# 			T1 = passive_difference(trajectories, J, g, model, params, dim)
+# 			T1t = jnp.sum(jnp.multiply(Ts.squeeze(), T1.squeeze()), axis=1)
+
+# 			T2 = rate_transitions(trajectories, Fs)
+# 			T2s = jnp.sum(T2, axis=1).squeeze()
+
+# 			logRN = T1t + T2s + Vt
+# 			Eest = Vt[0] + T1t[0] + T2s[0]
+
+# 	return ipl
+
 
 def get_Ieploss(J, g, lattice_size, dim):
 	"""

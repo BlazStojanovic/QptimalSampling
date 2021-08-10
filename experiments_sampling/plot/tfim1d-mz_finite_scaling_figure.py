@@ -4,7 +4,7 @@ import numpy as np
 
 import matplotlib
 from matplotlib import rc
-matplotlib.rcParams.update({'font.size': 22})
+matplotlib.rcParams.update({'font.size': 30})
 matplotlib.rcParams['text.usetex'] = True
 matplotlib.rcParams['text.latex.preamble'] = r'\usepackage{libertine} \usepackage{amsfonts}'
 

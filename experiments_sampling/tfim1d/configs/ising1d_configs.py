@@ -15,7 +15,7 @@ def get_defaults():
 	config.optimizer = 'adam'
 
 	### training details
-	config.batch_size = 32
+	config.batch_size = 50
 	config.num_epochs = 120
 	config.chpt_freq = 10 # checkpoint frequency
 
@@ -23,9 +23,9 @@ def get_defaults():
 	config.loss_type = 'endpoint'
 	config.architecture = 'pcnn'
 	config.out_channels = 1
-	config.hid_channels = 12
-	config.kernel_size = 3
-	config.layers = 6
+	config.hid_channels = 15
+	config.kernel_size = 5
+	config.layers = 8
 
 	### validation
 	config.no_valids = 3
@@ -36,14 +36,14 @@ def get_defaults():
 
 	### dimensionality
 	config.dim = 1
-	config.L = 12
+	config.L = 24
 
 	### magnetisation and transverse field
 	config.g = 1.0
 	config.J = 1.0
 
 	### simulation time
-	config.T = 50
+	config.T = 60
 	config.t_vector_increment = 1000 # see how trajectories are generated
 
 	# sampling param

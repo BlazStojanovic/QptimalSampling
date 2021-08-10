@@ -13,7 +13,15 @@ def m_z(jg):
 	f = lambda q: (1 - 0.5*jg*jnp.cos(q))/e_q(jg, q)
 	return (quad(f, 0, jnp.pi)[0])/jnp.pi
 
+def m_x(jg):
+	# if jg > 2:
+	return jnp.power(1-4*jnp.reciprocal(jnp.square(jg)), 1/8.)
+	# else:
+	# 	return 0
+
+
 m_z = jnp.vectorize(m_z)
+# m_x = jnp.vectorize(m_x)
 energy_per_site = jnp.vectorize(energy_per_site)
 
 if __name__ == '__main__':

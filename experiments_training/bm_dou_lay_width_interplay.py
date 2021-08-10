@@ -9,8 +9,8 @@ import numpy as np
 
 if __name__ == '__main__':
 	
-	# widths =  (np.arange(11)*3 + 1).astype(int)
-	# layers =  (np.arange(11) + 2).astype(int)
+	widths =  (np.arange(10, 11)*2 + 1).astype(int)
+	layers =  (np.arange(10, 11) + 2).astype(int)
 
 	for w in widths:
 		for l in layers:
