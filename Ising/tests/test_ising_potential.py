@@ -8,7 +8,6 @@ import unittest
 import jax
 import jax.random as rnd
 import jax.numpy as jnp
-
 import tensorflow as tf
 
 import sys
