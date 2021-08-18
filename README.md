@@ -1,13 +1,12 @@
 # QOptimal sampling source code - MPhil repository of Blaz Stojanovic
 
-[![Hello, world](https://github.com/BlazStojanovic/QptimalSampling/blob/main/experiments_sampling/figures/rate_structure.pdf)](https://github.com/mappum)
+[![Hello, world](https://github.com/BlazStojanovic/QptimalSampling/blob/main/experiments_sampling/figures/rate_structure.png)]
 
 ## Testing the code
 
 Tests for the implementation of the Ising loss and helper functions is in Ising/tests (analogous for Heisenberg), to run a test simply go into appropriate directory and run
 ```
-	python -m unittest test_something.py
-
+python -m unittest test_something.py
 ```
 
 ## Reproducing the results

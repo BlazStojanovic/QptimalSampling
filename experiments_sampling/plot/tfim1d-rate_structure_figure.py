@@ -62,4 +62,5 @@ ax[3].set_yticks([])
 
 plt.savefig("../../../Thesis/Chapter5/Figs/Vector/rate_structure.pdf", bbox_inches='tight')
 plt.savefig("../figures/rate_structure.pdf", bbox_inches='tight')
+plt.savefig("../figures/rate_structure.png", bbox_inches='tight')
 plt.show()
