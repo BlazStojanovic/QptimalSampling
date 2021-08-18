@@ -63,7 +63,17 @@ class Trainer:
 			key, subkey = rnd.split(key)
 
 			# optimisation step on one batch
-			state, vals, eest, epoch_time, it = self.train_epoch(subkey, state, epoch, model, params)
+			if self.config.training_mode == 'adaptive':
+				# the rates adapt, we are truly sampling from the variational rates
+				state, vals, eest, epoch_time, it = self.train_epoch(subkey, state, epoch, model, state.params) 
+			elif self.config.training_mode == 'initial':
+				# the rates stay the same, we are sampling from the initial rates
+				state, vals, eest, epoch_time, it = self.train_epoch(subkey, state, epoch, model, params)
+			elif self.config.training_mode == 'passive':
+				# sample from the passive rates
+				raise NotImplementedError
+				state, vals, eest, epoch_time, it = self.train_epoch(subkey, state, epoch, model, params)
+
 			print('Memory usage: {} (Mb)'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*0.001))
 
 			loss_ = loss_.at[epoch-1].set(vals)
@@ -85,7 +95,7 @@ class Trainer:
 		# construct sampler object with learned rates			
 		sampler = (state, vals, params)
 
-		# return TODO
+		# return
 		return sampler
 
 	def init_training(self, prngn=0):
@@ -239,8 +249,9 @@ class Trainer:
 				# trajectories, Ts, Fs, key = loop_state
 				Ts, Fs, key = loop_state
 
-				# create permutation, use the same key for all three permutations. TODO possible source of errors if the permutations are not the same
+				# create permutations
 				Ts = Ts.at[i, 0:-1].set(rnd.permutation(key, Ts[0, 0:-1]))
+				key, subkey = rnd.split(key)
 				Fs = Fs.at[i, 0:-1].set(rnd.permutation(key, Fs[0, 0:-1]))
 
 				# new key for new permutations
@@ -284,7 +295,7 @@ class Trainer:
 					trajectories = trajectories.at[:, i, :, :, :].set(jnp.multiply(trajectories[:, i-1, :, :, :], F))
 				elif dim == 1:
 					F = jnp.ones((Nb, l, 1))
-					F = F.at[jnp.arange(Nb), Fs[:, i-1, 0] % l, :].set(-1)
+					F = F.at[jnp.arange(Nb), Fs[:, i-1, 0], :].set(-1)
 					trajectories = trajectories.at[:, i, :, :].set(jnp.multiply(trajectories[:, i-1, :, :], F))
 
 				return trajectories
@@ -308,6 +319,7 @@ class Trainer:
 													self.config.L)
 		self.get_trajectory = nn.jit(ctr)
 		# self.get_trajectory = jit(self.get_trajectory)
+		# self.get_trajectory = ctr
 
 		## permute to get a batch with fixed endpoints
 		gbtc = lambda key, times, flips: get_btc(key, self.config.batch_size, times, flips)
@@ -336,6 +348,7 @@ class Trainer:
 			epoch -- index of epoch
 
 			"""
+
 			start_time = time.time()
 
 			# randomly generate an initial state S0
@@ -362,14 +375,10 @@ class Trainer:
 			grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
 			(vals, eest), grads = grad_fn(state.params)
 			
-			# (vals, eest), grads = jax.value_and_grad(self.lossf, argnums=[1], has_aux=True)(model, params, trajectories, Ts, Fs)
-			# # print(grads)
 			state = state.apply_gradients(grads=grads)
 
 			epoch_time = time.time() - start_time
 			print('train_epoch: {} in {:0.2f} sec, loss: {:.4f}, no iterations: {}, energy est: {:.4f}'.format(epoch, epoch_time, vals, it, eest))	
-
-			# logging.debug('train_epoch: {} in {:0.2f} sec, loss: {:.4f}, no iterations: {}, energy est: {:.4f}'.format(epoch, epoch_time, vals, it, eest))	
 
 			return state, vals, eest, epoch_time, it
 
@@ -402,21 +411,13 @@ class Trainer:
 
 				# periodic CNN object
 				if self.config.dim == 2:
-					pcnn = pCNN(conv=CircularConv, 
+					pcnn = pCNN2d(conv=CircularConv2d, 
 							act=nn.softplus,
 			 				hid_channels=self.config.hid_channels, 
 			 				out_channels=self.config.out_channels,
 							K=self.config.kernel_size, 
 							layers=self.config.layers, 
 							strides=(1,1))
-
-					# pcnn = pCNN2d(conv=CircularConv2d, 
-					# 		act=nn.softplus,
-			 	# 			hid_channels=self.config.hid_channels, 
-			 	# 			out_channels=self.config.out_channels,
-					# 		K=self.config.kernel_size, 
-					# 		layers=self.config.layers, 
-					# 		strides=(1,1))
 				
 				elif self.config.dim == 1:
 					pcnn = pCNN1d(conv=CircularConv1d, 
@@ -473,7 +474,9 @@ class Trainer:
 			exit(0)
 
 	def save_chp(self, epoch, state, loss, valid, keep=10):
-		path = 'data/' + self.experiment_name + '/' + self.output_dir + '/checkpoints'
+		path = 'data/' + self.experiment_name + '/' + self.output_dir + '/checkpoints{}'.format(epoch) 
+		if not os.path.exists(path):
+				os.mkdir(path)
 		checks.save_checkpoint(path, state, epoch, keep=keep, overwrite=True)
 		
 		# save configuration
@@ -551,20 +554,16 @@ class Trainer:
 
 			return initial_params, pcnn
 
-
 		# load binary
 		f = open(dir_path+'/params.txt', 'rb')
 		b = f.read()
 		
 		key = jax.random.PRNGKey(0)
 		params, model = self.get_rate_parametrisation(key)
-
-		# get params
 		ser = serialization.from_bytes(params, b)
-		
+
 		return ser
 
-		
 	def load_from_chp(self, dir_path):
 		self.from_beg = False
 		self.load_folder = dir_path

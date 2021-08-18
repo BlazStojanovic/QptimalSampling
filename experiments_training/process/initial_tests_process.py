@@ -87,7 +87,6 @@ def NB_avg_var_loss(load_path, no_sampl):
 			np.save('../data/initial_tests_fig/NbT_var_loss.npy', NbT_var_loss)
 			np.save('../data/initial_tests_fig/NbT_full.npy', NbT_full)
 
-
 def wl_loss_avg_var(key, load_path, no_sampl, w, l):
 	lls = np.zeros((no_sampl,))
 	conf = iconf.get_WL()
@@ -168,6 +167,7 @@ def WL_avg_var_loss(load_path, no_sampl):
 def wl_times_size(load_path):
 	WL_timeapprox = np.zeros((11, 11))
 	WL_sizeapprox = np.zeros((11, 11))
+	WL_final_loss = np.zeros((11, 11))
 	
 	path_prefix = '../data/WL_interplay/'
 	widths =  (np.arange(11)*2 + 1).astype(int)
@@ -178,25 +178,33 @@ def wl_times_size(load_path):
 			try:
 				inp = load_path + "W{}L{}/final/valids.npy".format(int(w), int(l))
 				valids = np.load(inp)
-				# print(max(valids[:, 2]))
-				times = np.average(valids[:, 1])
-				storage = np.average(valids[:, 2])
+				fl = np.load(load_path + "W{}L{}/checkpoints/loss.npy".format(int(w), int(l)))
+				fl = np.trim_zeros(fl)
+				times = np.average(np.trim_zeros(valids[:, 1]))
+				storage = np.average(np.trim_zeros(valids[:, 2]))
 			except FileNotFoundError: # execution halted due to infinite gradients or some other reason
 				inp = load_path + "W{}L{}/checkpoints/valids.npy".format(int(w), int(l))
 				valids = np.load(inp)
-				# print(max(valids[:, 2]))
+				fl = np.load(load_path + "W{}L{}/checkpoints/loss.npy".format(int(w), int(l)))
+				fl = np.trim_zeros(fl)
 				times = np.average(np.trim_zeros(valids[:, 1]))
-				# print(valids)
 				storage = np.average(np.trim_zeros(valids[:, 2]))
-				WL_timeapprox[i, j] = times
-				WL_sizeapprox[i, j] = storage
 
+			WL_timeapprox[i, j] = times
+			WL_sizeapprox[i, j] = storage
+			WL_final_loss[i, j] = np.average(fl[-4:-1])
+
+	np.save('../data/initial_tests_fig/WL_fl.npy', WL_final_loss)
 	np.save('../data/initial_tests_fig/WL_timeapprox.npy', WL_timeapprox)
 	np.save('../data/initial_tests_fig/WL_sizeapprox.npy', WL_sizeapprox)
+
+	return WL_final_loss
 
 def nb_times_size(load_path):
 	NbT_timeapprox = np.zeros((11, 11))
 	NbT_sizeapprox = np.zeros((11, 11))
+	# NbT_sizeapprox_var = np.zeros((11, 11))
+	NbT_final_loss = np.zeros((11, 11))
 	
 	B =  (np.arange(0, 11)*10 + 2).astype(int) # range 2 - 102
 	T =  (np.arange(0, 11)*10 + 2).astype(int) # range 2 - 102
@@ -205,22 +213,30 @@ def nb_times_size(load_path):
 		for j, t in enumerate(T):
 			inp = load_path + "Nb{}T{}/final/valids.npy".format(int(b), int(t))
 			valids = np.load(inp)
+			fl = np.load(load_path + "Nb{}T{}/checkpoints/loss.npy".format(int(b), int(t)))
+
 			times = np.average(valids[:, 1])
 			storage = np.average(valids[:, 2])
+			# storage_var = np.var(valids[:, 2])
 			NbT_timeapprox[i, j] = times
 			NbT_sizeapprox[i, j] = storage
+			NbT_final_loss[i, j] = np.average(fl[-4:-1])
 
+
+	np.save('../data/initial_tests_fig/NbT_fl.npy', NbT_final_loss)
 	np.save('../data/initial_tests_fig/NbT_timeapprox.npy', NbT_timeapprox)
 	np.save('../data/initial_tests_fig/NbT_sizeapprox.npy', NbT_sizeapprox)
+	# np.save('../data/initial_tests_fig/NbT_sizeapproxvar.npy', NbT_sizeapprox_var)
+
+	return NbT_final_loss
 
 if __name__ == '__main__':
 	tb_load_path = '../data/TB_interplay/'
 	wl_load_path = '../data/WL_interplay/'
 	no_sampl = 10
 
-	nb_times_size(tb_load_path)
 	wl_times_size(wl_load_path)
+	nb_times_size(tb_load_path)
 
 	NB_avg_var_loss(tb_load_path, no_sampl)	
 	WL_avg_var_loss(wl_load_path, no_sampl)
-

@@ -119,61 +119,6 @@ class pCNN1d(nn.Module):
 						   K=self.K,  
 						   strides=self.strides)(x)
 
-#################################################################################################################################
-class pCNN(nn.Module):
-	"""periodic all-pixle-correlated CNN"""
-	conv: ModuleDef
-	act: Callable
-	hid_channels: int
-	out_channels: int
-	K: Union[int, Iterable[int]]
-	layers: int # TODO add check, because this has to be a certain fixed value
-	strides: Tuple[int, int] = (1,1)
-
-	@nn.compact
-	def __call__(self, x):
-		for i in range(0, self.layers):
-			x = PeriodicBlock(conv=self.conv, 
-						   act=self.act, 
-						   channels=self.hid_channels,
-						   K=self.K,  
-						   strides=self.strides)(x)
-
-		return PeriodicBlock(conv=self.conv, 
-						   act=nn.softplus,
-						   channels=self.out_channels,
-						   K=self.K,  
-						   strides=self.strides)(x)
-
-
-class PeriodicBlock(nn.Module):
-	"""Single block of the pCNN"""
-	conv: ModuleDef
-	act: Callable
-	channels: int
-	K: Union[int, Iterable[int]]
-	strides: Tuple[int, int] = (1, 1)
-	@nn.compact
-	def __call__(self, x,):
-		y = self.conv(self.channels, self.K, strides=self.strides)(x)
-		return self.act(y)
-
-
-
-class CircularConv(nn.Module):
-	"""Circular convolution, equivalent to padding_mode='circular' in Torch"""
-	channels: int
-	K: Union[int, Iterable[int]]
-	strides: Tuple[int, int] = (1,1)
-	@nn.compact
-	def __call__(self, x):
-		padding = [(0, 0)] + [(k//2, k//2) for k in self.K] + [(0, 0)]
-		x = jnp.pad(x, padding, mode='wrap')
-		return nn.Conv(self.channels, 
-					   self.K,
-					   strides=self.strides, 
-					   padding='VALID')(x)
-
 def check_pcnn_validity(lattice_size, K, layers, dim):
 	"""
 	Checks if the hyperparameters of the pCNN are such that 
@@ -237,7 +182,7 @@ if __name__ == '__main__':
 
 	K = 3 # must be odd for this to work
 	out_channels = 1
-	hid_channels = 15
+	hid_channels = 10
 
 	key = random.PRNGKey(123456789)
 	pcnn = pCNN1d(conv=CircularConv1d,

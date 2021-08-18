@@ -1,1 +1,0 @@
-{"J": 1.0, "T": 15, "architecture": "pCNN", "b1": 0.9, "b2": 0.999, "batch_size": 3, "g": 1.0, "hid_channels": 5, "kernel_size": [3, 3], "lattice_size": 3, "layers": 3, "learning_rate": 0.01, "loss_type": "endpointloss", "max_trajectory_length": 10000, "num_epochs": 10, "out_channels": 1, "trajectory_length": 5}

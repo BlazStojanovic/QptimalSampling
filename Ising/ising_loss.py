@@ -30,8 +30,6 @@ def ising_potential_single(S, J, g, dim):
 		# first term
 		potential = z*zu + z*zr
 		potential = -J*jnp.sum(potential, axis=(-1, -2, -3)) # (1, l, l, 1) are (-4, -3, -2, -1)
-
-		#second term
 		potential -= g*jnp.sum(jnp.ones(jnp.shape(S)), axis=(-1, -2, -3))
 
 	elif dim == 1:
@@ -94,8 +92,11 @@ def rate_transition_single(S, f, J, g, lattice_size, model, params, dim):
 		# rates = jnp.ones(jnp.shape(S))
 		rate = rates[f//lattice_size, f%lattice_size, 0] # the rate corresponding to going to next state
 
+		# print(rate)
+
 		# from passive rates
 		passive = g
+		# print(jnp.log(rate/passive))
 
 	elif dim == 1:
 		rates = model.apply({'params': params['params']}, S[None, :, :]) # get current rates
@@ -104,7 +105,7 @@ def rate_transition_single(S, f, J, g, lattice_size, model, params, dim):
 
 		# from passive rates
 		passive = g
-		
+
 	return jnp.log(rate/passive)
 
 def get_rate_transition(J, g, l, model, params, dim):
@@ -149,22 +150,22 @@ def ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size,
 	logRN = T1t + T2s + Vt
 	Eest = Vt[0] + T1t[0] + T2s[0]
 
-	# logging.debug("potential: ", jax.lax.stop_gradient(V))
-	# logging.debug("logrn T1: ", jax.lax.stop_gradient(V))
-	# logging.debug("logrn T2: ", jax.lax.stop_gradient(V))
-	# logging.debug(15*'-' + 'new epoch', 15*'-')
-	# logging.debug("Permuted times: ", Ts[:, :, 0])
-	# logging.debug("Permuted flips: ", Fs[:, :, 0])
-	# logging.debug("times shape: ", jnp.shape(Ts))
-	# logging.debug("flips shape: ", jnp.shape(Fs))
-	# logging.debug("flips shape: ", jnp.shape(trajectories))
-	# logging.debug("Times after sampling (should equal T), ", jnp.sum(Ts[:, :, 0], axis=1))
-	# logging.debug("Length of trajectory, ", jnp.sum(Ts[:, :, 0], axis=1))
-	# logging.debug("logRN + E0 of the first trajectory (should get closer and closer to E0), ", jax.lax.stop_gradient(Eest)/jnp.sum(Ts[0, :, 0]))
-	# logging.debug("First term contribution to logRN, ", jax.lax.stop_gradient(Vt))
-	# logging.debug("Second term contribution to logRN, ", jax.lax.stop_gradient(T1t))
-	# logging.debug("Third term contribution to logRN, ", jax.lax.stop_gradient(T2s))
-	# logging.debug("logRN of each permutation", jax.lax.stop_gradient(logRN))
+	# print(15*'-' + 'new epoch', 15*'-')
+	# print("potential: ", jax.lax.stop_gradient(V.T))
+	# print("logrn T1: ", jax.lax.stop_gradient(T1.T))
+	# print("logrn T2: ", jax.lax.stop_gradient(T2.squeeze()))
+	# print("Permuted times: ", Ts[:, :, 0])
+	# print("Permuted flips: ", Fs[:, :, 0])
+	# print("times shape: ", jnp.shape(Ts))
+	# print("flips shape: ", jnp.shape(Fs))
+	# print("trajectories shape: ", jnp.shape(trajectories))
+	# print("Times after sampling (should equal T), ", jnp.sum(Ts[:, :, 0], axis=1))
+	# print("Length of trajectory, ", jnp.sum(Ts[:, :, 0], axis=1))
+	# print("logRN + E0 of the first trajectory (should get closer and closer to E0), ", jax.lax.stop_gradient(Eest)/jnp.sum(Ts[0, :, 0]))
+	# print("First term contribution to logRN, ", jax.lax.stop_gradient(Vt))
+	# print("Second term contribution to logRN, ", jax.lax.stop_gradient(T1t))
+	# print("Third term contribution to logRN, ", jax.lax.stop_gradient(T2s))
+	# print("logRN of each permutation", jax.lax.stop_gradient(logRN))
 
 	return jnp.var(logRN, ddof=1), jax.lax.stop_gradient(Eest)/jnp.sum(Ts[0, :, 0])
 
