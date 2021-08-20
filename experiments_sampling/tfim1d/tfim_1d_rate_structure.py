@@ -17,7 +17,9 @@ def run_for_L(L, i): # todo add flexibility
 	# IO details
 	conf = iconf.get_structure()
 	out = "run-{}".format(int(i))
-
+	conf.batch_type = 'permute'
+	conf.training_mode = 'adaptive'
+		
 	conf.L = L
 
 	# construct experiment

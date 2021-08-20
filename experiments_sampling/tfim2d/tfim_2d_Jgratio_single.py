@@ -23,6 +23,9 @@ def run_for_L(L, r): # todo add flexibility
 			conf = iconf.get_defaults()
 			out = "gjrat{}".format(int(r*100))
 
+			conf.batch_type = 'permute'
+			conf.training_mode = 'adaptive'
+
 			conf.g = r
 			conf.L = L
 			conf.J = 1.0

@@ -2,7 +2,7 @@
 
 import ml_collections
 
-def get_defaults():
+def get_defaults(): # this is the full experimental one for TFIM 1d
 	config = ml_collections.ConfigDict()
 
 	# learninig hyperparameters
@@ -15,17 +15,23 @@ def get_defaults():
 	config.optimizer = 'adam'
 
 	### training details
-	config.batch_size = 50
-	config.num_epochs = 120
-	config.chpt_freq = 10 # checkpoint frequency
+	config.batch_type = 'construct' # can be permute, split, construct
+	config.batch_Tvar = False
+	config.batch_size = 20
+	config.batch_Na = 4
+	config.batch_Neven = 2
+
+	config.num_epochs = 400
+	config.chpt_freq = 5 # checkpoint frequency
 
 	### architecture params
+	config.training_mode = 'adaptive' # only applies for permutations and split
 	config.loss_type = 'endpoint'
 	config.architecture = 'pcnn'
 	config.out_channels = 1
-	config.hid_channels = 10
+	config.hid_channels = 5
 	config.kernel_size = 3
-	config.layers = 6
+	config.layers = 3
 
 	### validation
 	config.no_valids = 3
@@ -43,7 +49,7 @@ def get_defaults():
 	config.J = 1.0
 
 	### simulation time
-	config.T = 100
+	config.T = 1
 	config.t_vector_increment = 10000 # see how trajectories are generated
 
 	# sampling param

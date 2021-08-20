@@ -7,7 +7,6 @@ from jax import jit, vmap
 import jax
 
 from flax.linen import jit as fjit
-
 import logging
 
 def ising_potential_single(S, J, g, dim):
@@ -44,6 +43,12 @@ def ising_potential_single(S, J, g, dim):
 ising_potential = vmap(ising_potential_single, in_axes=(0, None, None, None), out_axes=(0))
 ising_potentialV = vmap(ising_potential, in_axes=(0, None, None, None), out_axes=(0))
 
+def get_ising_potential(J, g, dim):
+	# specialise
+	# f = lambda S:
+	f = lambda S: ising_potentialV(S, J, g, dim)
+	return jit(f)
+
 def passive_difference_single(S, J, g, model, params, dim):
 	"""
 	Returns the sum of the difference between the passive and variational rates for
@@ -72,6 +77,10 @@ def passive_difference_single(S, J, g, model, params, dim):
 
 passive_difference = vmap(passive_difference_single, in_axes=(0, None, None, None, None, None), out_axes=(0))
 
+def get_passive_difference(J, g, model, dim):
+	f = lambda Ss, params: passive_difference(Ss, J, g, model, params, dim)
+	return jit(f)
+
 def rate_transition_single(S, f, J, g, lattice_size, model, params, dim):
 	"""
 	Returns a term for a single n of the third loss term (transition rate between subsequent states)
@@ -87,20 +96,50 @@ def rate_transition_single(S, f, J, g, lattice_size, model, params, dim):
 	--------
 	diff -- single term of the third loss
 	"""
+	print(jnp.shape(S))
+	print(jnp.shape(f))
+
 	if dim == 2:
 		rates = model.apply({'params': params['params']}, S[None, :, :, :]) # get current rates
-		# rates = jnp.ones(jnp.shape(S))
 		rate = rates[f//lattice_size, f%lattice_size, 0] # the rate corresponding to going to next state
-
-		# print(rate)
 
 		# from passive rates
 		passive = g
-		# print(jnp.log(rate/passive))
 
 	elif dim == 1:
 		rates = model.apply({'params': params['params']}, S[None, :, :]) # get current rates
-		# rates = jnp.ones(jnp.shape(S))
+		rate = rates[f%lattice_size, 0] # the rate corresponding to going to next state
+
+		# from passive rates
+		passive = g
+
+	return jnp.log(rate/passive)
+
+def rate_transition_single1(S, f, J, g, lattice_size, model, params, dim):
+	"""
+	Returns a term for a single n of the third loss term (transition rate between subsequent states)
+	Params:
+	-------
+	S -- state
+	J -- interaction coefficient
+	g -- coupling coefficient
+	model -- variational approximation of the rates
+	params -- params of the variational approximation
+
+	Returns:
+	--------
+	diff -- single term of the third loss
+	"""
+
+	if dim == 2:
+		rates = model.apply({'params': params['params']}, S) # get current rates
+		rate = rates[f//lattice_size, f%lattice_size, 0] # the rate corresponding to going to next state
+
+		# from passive rates
+		passive = g
+
+	elif dim == 1:
+		rates = model.apply({'params': params['params']}, S) # get current rates
 		rate = rates[f%lattice_size, 0] # the rate corresponding to going to next state
 
 		# from passive rates
@@ -115,8 +154,13 @@ def get_rate_transition(J, g, l, model, params, dim):
 
 def get_rate_transitions(J, g, l, model, params, dim):
 	nf = get_rate_transition(J, g, l, model, params, dim)
-
 	return vmap(nf, in_axes=(1, 1), out_axes=1)
+
+def get_rate_transition1(J, g, l, model, dim):
+	def nf(Ss, Fs, params):
+		return rate_transition_single1(Ss, Fs, J, g, l, model, params, dim)
+	return vmap(nf, in_axes=(1, 0, None), out_axes=(1))
+
 
 def ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size, dim):
 	"""
@@ -169,38 +213,41 @@ def ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size,
 
 	return jnp.var(logRN, ddof=1), jax.lax.stop_gradient(Eest)/jnp.sum(Ts[0, :, 0])
 
-# def Ieploss(trajectories, Ts, Fs, model, params, J, g, lattice_size, dim)
+def get_logRN(J, g, l, dim, model):
+	V = get_ising_potential(J, g, dim) # S
+	T1 = get_passive_difference(J, g, model, dim) #Ss, params
+	T2 = get_rate_transition1(J, g, l, model, dim) # Ss, Fs, params
 
-# 	grt = lambda: model, J, g, lattice_size
+	def logRN(params, trajectory, times, flips):
+		v = V(trajectory)
+		vt = jnp.sum(jnp.multiply(times, v), axis=1)
 
-# 	def ipl(model, params, trajectories, Ts, Fs):
-# 			rate_transitions = get_rate_transitions(J, g, lattice_size, model, params, dim)
+		t1 = T1(trajectory, params)
+		t1t = jnp.sum(jnp.multiply(times, t1), axis=1)
 
-# 			logRN = 0.0
-# 			V = ising_potentialV(trajectories, J, g, dim)
-# 			Vt = jnp.sum(jnp.multiply(Ts.squeeze(), V.squeeze()), axis=1)
+		t2 = T2(trajectory, flips, params)
+		t2s = jnp.sum(t2, axis=1)
 
-# 			T1 = passive_difference(trajectories, J, g, model, params, dim)
-# 			T1t = jnp.sum(jnp.multiply(Ts.squeeze(), T1.squeeze()), axis=1)
+		# print(15*'-' + 'new epoch', 15*'-')
+		# print("potential: ", jax.lax.stop_gradient(v.T))
+		# print("logrn T1: ", jax.lax.stop_gradient(t1.T))
+		# print("logrn T2: ", jax.lax.stop_gradient(t2))
+		# print("times shape: ", jnp.shape(times))
+		# print("flips shape: ", jnp.shape(flips))
+		# print("trajectories shape: ", jnp.shape(trajectory))
+		# print("First term contribution to logRN, ", jax.lax.stop_gradient(vt))
+		# print("Second term contribution to logRN, ", jax.lax.stop_gradient(t1t))
+		# print("Third term contribution to logRN, ", jax.lax.stop_gradient(t2s))
 
-# 			T2 = rate_transitions(trajectories, Fs)
-# 			T2s = jnp.sum(T2, axis=1).squeeze()
+		logrn = t1t + t2s + vt
 
-# 			logRN = T1t + T2s + Vt
-# 			Eest = Vt[0] + T1t[0] + T2s[0]
+		return logrn
 
-# 	return ipl
-
+	return logRN
 
 def get_Ieploss(J, g, lattice_size, dim):
 	"""
 	Return Ising endpoint loss for a fixed lattice size, J and g constants
 	"""
 	f = lambda model, params, trajectories, Ts, Fs: ising_endpoint_loss(trajectories, Ts, Fs, model, params, J, g, lattice_size, dim)
-
 	return f
-
-
-
-
-

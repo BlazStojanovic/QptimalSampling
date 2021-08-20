@@ -7,7 +7,7 @@ import matplotlib
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from matplotlib import rc
-matplotlib.rcParams.update({'font.size': 18})
+matplotlib.rcParams.update({'font.size': 22})
 matplotlib.rcParams['text.usetex'] = True
 matplotlib.rcParams['text.latex.preamble'] = r'\usepackage{libertine} \usepackage{amsfonts}'
 
@@ -55,7 +55,7 @@ plt.xlabel('MC step')
 plt.ylim([0.265, 0.29])
 plt.ticklabel_format(axis="x", style="sci", scilimits=(0,0))
 plt.legend()
-plt.savefig("../../../Thesis/Chapter5/Figs/Vector/sampling_example.pdf", bbox_inches='tight')
-plt.savefig("../figures/sampling_example.pdf", bbox_inches='tight')
+plt.savefig("../../../Thesis/Chapter5/Figs/Raster/sampling_example.png", bbox_inches='tight')
+plt.savefig("../figures/sampling_example.png", bbox_inches='tight')
 plt.show()
 

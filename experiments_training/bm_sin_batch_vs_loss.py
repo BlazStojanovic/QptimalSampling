@@ -15,6 +15,9 @@ if __name__ == '__main__':
 		conf = iconf.get_batch_vs_loss()
 		conf.batch_size = nbc
 
+		conf.batch_type = 'permute'
+		conf.training_mode = 'adaptive'
+
 		experiment_name = "batch_vs_loss"
 		out = "nb{}".format(int(nbc))
 

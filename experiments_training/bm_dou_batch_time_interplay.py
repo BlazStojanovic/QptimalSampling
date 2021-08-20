@@ -16,6 +16,10 @@ if __name__ == '__main__':
 			# IO details
 			conf = iconf.get_TB()
 			conf.batch_size = int(Nb)
+
+			conf.batch_type = 'permute'
+			conf.training_mode = 'adaptive'
+
 			conf.T = int(t)
 			conf.t_vector_increment = int(t*conf.t_vector_increment//10) # see how trajectories are generated
 			experiment_name = "TB_interplay"

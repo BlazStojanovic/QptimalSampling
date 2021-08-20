@@ -16,6 +16,9 @@ if __name__ == '__main__':
 		conf = iconf.get_width_vs_loss()
 		conf.hid_channels = h
 
+		conf.batch_type = 'permute'
+		conf.training_mode = 'adaptive'
+
 		experiment_name = "width_vs_loss"
 		out = "wid{}".format(int(h))
 

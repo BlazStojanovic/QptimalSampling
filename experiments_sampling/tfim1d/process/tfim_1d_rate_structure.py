@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 def get_rates_and_configs(L, i):
 	config = iconf.get_structure()
 	config.L = L
+	config.batch_type = 'construct'
 	experiment_name = "tfim1d_structure-L{}".format(L)
 	input_dir = "run-{}/final/".format(int(i))
 	output_dir = "/sampling"

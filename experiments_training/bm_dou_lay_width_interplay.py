@@ -19,6 +19,9 @@ if __name__ == '__main__':
 			conf.hid_channels = int(w)
 			conf.layers = int(l)
 
+			conf.batch_type = 'permute'
+			conf.training_mode = 'adaptive'
+
 			print("width: {}, layers {}".format(w, l))
 
 			experiment_name = "WL_interplay"

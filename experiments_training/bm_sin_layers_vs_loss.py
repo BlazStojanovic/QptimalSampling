@@ -16,6 +16,9 @@ if __name__ == '__main__':
 		conf = iconf.get_lay_vs_loss()
 		conf.layers = l
 
+		conf.batch_type = 'permute'
+		conf.training_mode = 'adaptive'
+
 		experiment_name = "layer_vs_loss"
 		out = "lay{}".format(int(l))
 

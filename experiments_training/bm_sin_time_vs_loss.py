@@ -15,6 +15,8 @@ if __name__ == '__main__':
 		conf = iconf.get_time_vs_loss()
 		conf.T = t
 		conf.t_vector_increment = int(t*conf.t_vector_increment//10) # see how trajectories are generated
+		conf.batch_type = 'permute'
+		conf.training_mode = 'adaptive'
 		print(conf.t_vector_increment)
 
 		experiment_name = "time_vs_loss"

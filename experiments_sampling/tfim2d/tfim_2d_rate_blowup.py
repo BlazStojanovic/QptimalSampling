@@ -21,6 +21,8 @@ if __name__ == '__main__':
 
 			conf = iconf.get_defaults()
 			out = "{}".format(i)
+			conf.batch_type = 'permute'
+			conf.training_mode = 'adaptive'
 
 			conf.L = 3
 			conf.num_epochs = 30

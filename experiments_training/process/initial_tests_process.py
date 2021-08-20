@@ -25,6 +25,8 @@ def loss_avg_var(key, load_path, no_sampl, t, b):
 	# set time and batch size
 	conf.batch_size = 50
 	# conf.T = int(t)
+	conf.batch_type = 'permute'
+	conf.training_mode = 'adaptive'
 	conf.T = 50
 	conf.t_vector_increment = 7500
 

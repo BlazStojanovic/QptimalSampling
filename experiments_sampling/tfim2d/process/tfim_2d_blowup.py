@@ -26,7 +26,9 @@ if __name__ == '__main__':
 	config.L = L
 	config.g = g
 	config.J = J
-
+	config.batch_type = 'permute'
+	config.training_mode = 'adaptive'
+		
 	N = 10000
 	no_chains = 1
 	
